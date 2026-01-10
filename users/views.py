@@ -74,3 +74,15 @@ class CandidateListView(generics.ListAPIView):
 
     def get_queryset(self):
         return User.objects.filter(role='candidate').order_by('-date_joined')
+
+
+class UserProfileView(generics.RetrieveUpdateAPIView):
+    """
+    Allows any authenticated user to view and update their own profile.
+    """
+    serializer_class = UserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        # Magic: Simply returns the user who is currently logged in
+        return self.request.user

@@ -1,7 +1,7 @@
 from django.urls import path
-from .views import CertificateInventoryView
+from .views import DownloadCertificateView
 
 urlpatterns = [
-    path('admin/certificates/', CertificateInventoryView.as_view(), name='admin-certificates'),
-    # Add verification URL here later if needed
+    # CRITICAL FIX: Ensure this says <int:session_id>, NOT <str:certificate_id>
+    path('download/<int:session_id>/', DownloadCertificateView.as_view(), name='download-certificate'),
 ]

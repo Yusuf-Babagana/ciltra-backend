@@ -10,7 +10,6 @@ class ExamCategory(models.Model):
 
 class Exam(models.Model):
     title = models.CharField(max_length=255)
-    # Make category optional or handle string in serializer
     category = models.ForeignKey(ExamCategory, on_delete=models.SET_NULL, null=True, related_name='exams')
     description = models.TextField()
     price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
@@ -22,13 +21,24 @@ class Exam(models.Model):
     is_active = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    payment_link = models.URLField(
+        max_length=500, 
+        blank=True, 
+        null=True, 
+        help_text="Paste your Paystack Product Link here"
+    )
+
     def __str__(self):
         return self.title
+    
+    @property
+    def is_free(self):
+        return self.price == 0.00
 
 class Question(models.Model):
     class QuestionType(models.TextChoices):
         MCQ = "mcq", "Multiple Choice"
-        THEORY = "theory", "Open Ended / Translation" # Maps to 'essay'/'translation'
+        THEORY = "theory", "Open Ended / Translation"
 
     class Difficulty(models.TextChoices):
         EASY = "easy", "Easy"
@@ -39,16 +49,21 @@ class Question(models.Model):
     exam = models.ForeignKey(Exam, related_name='questions', on_delete=models.SET_NULL, null=True, blank=True)
     
     # Text content
-    text = models.TextField() # Frontend sends 'question_text'
+    text = models.TextField()
     question_type = models.CharField(max_length=20, choices=QuestionType.choices, default=QuestionType.MCQ)
     
     # Metadata for the Bank
-    category = models.CharField(max_length=100, blank=True) # Tagging questions
+    category = models.CharField(max_length=100, blank=True)
     difficulty = models.CharField(max_length=20, choices=Difficulty.choices, default=Difficulty.MEDIUM)
-    points = models.PositiveIntegerField(default=1)
+    
+    # UPDATED: Better default and help text for clarity
+    points = models.PositiveIntegerField(
+        default=2, 
+        help_text="Marks for this question (e.g., 2 for MCQ, 10 for Theory)"
+    )
 
     # Answers
-    correct_answer = models.TextField(blank=True, help_text="Correct answer text or reference")
+    correct_answer = models.TextField(blank=True, help_text="Correct answer text or reference (for Theory)")
 
     def __str__(self):
         return f"{self.text[:50]}..."

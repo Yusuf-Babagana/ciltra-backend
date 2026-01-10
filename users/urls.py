@@ -5,7 +5,8 @@ from .views import (
     CustomLoginView, 
     AdminStatsView, 
     CandidateListView, 
-    UserViewSet
+    UserViewSet,
+    UserProfileView
 )
 
 # Create a router for ViewSets
@@ -21,6 +22,7 @@ urlpatterns = [
     path('admin/stats/', AdminStatsView.as_view(), name='admin-stats'),
     path('admin/candidates/', CandidateListView.as_view(), name='admin-candidates'),
 
+    path('profile/', UserProfileView.as_view(), name='user-profile'),
     # --- User Management (CRUD) ---
     path('', include(router.urls)),
 ]

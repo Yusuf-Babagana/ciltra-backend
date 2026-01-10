@@ -11,6 +11,8 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+from datetime import timedelta  # <--- 1. ADD THIS IMPORT AT THE TOP
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -25,7 +27,7 @@ SECRET_KEY = 'django-insecure-aar$#ffaen4swzfr1rrpkfntf(scekc!3!4u%5plyxota3ku-a
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['51.77.149.67', 'cpt-cpt.ciltra.org', '127.0.0.1']
 
 
 # Application definition
@@ -148,6 +150,8 @@ AUTH_USER_MODEL = 'users.User'
 # Add this at the bottom of settings.py
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
+    "http://cpt-cpt.ciltra.org",
+    "http://51.77.149.67",
 ]
 
 # Optional: If you want to allow cookies/sessions cross-origin
@@ -158,3 +162,26 @@ AUTHENTICATION_BACKENDS = [
     'users.backends.EmailBackend',  # <--- Your custom email login
     'django.contrib.auth.backends.ModelBackend',    # <--- Fallback standard login
 ]
+
+SIMPLE_JWT = {
+    # Change this to how long you want them to stay logged in
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),  # Stays logged in for 24 hours
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7), # Can refresh login for 1 week
+    
+    'ROTATE_REFRESH_TOKENS': False,
+    'BLACKLIST_AFTER_ROTATION': False,
+    'UPDATE_LAST_LOGIN': True,
+
+    'ALGORITHM': 'HS256',
+    'SIGNING_KEY': SECRET_KEY,
+    'VERIFYING_KEY': None,
+    'AUDIENCE': None,
+    'ISSUER': None,
+    'JWK_URL': None,
+    'LEEWAY': 0,
+
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_id',
+}
