@@ -27,7 +27,7 @@ SECRET_KEY = 'django-insecure-aar$#ffaen4swzfr1rrpkfntf(scekc!3!4u%5plyxota3ku-a
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['51.77.149.67', 'cpt-cpt.ciltra.org', '127.0.0.1']
+ALLOWED_HOSTS = ['51.77.149.67', 'cpt-cpt.ciltra.org','localhost','127.0.0.1']
 
 
 # Application definition

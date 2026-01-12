@@ -1,10 +1,16 @@
-# ciltra-backend/ciltra_platform/urls.py
+# ciltra_platform/urls.py
 from django.contrib import admin
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
-# Import Core Views
-from users.views import RegisterView, CustomLoginView, UserProfileView
+# --- Import Core Views ---
+from users.views import (
+    RegisterView, 
+    CustomLoginView, 
+    UserProfileView,
+    CandidateListView, 
+    UserViewSet
+)
 from exams.views import ExamViewSet, QuestionViewSet, CategoryViewSet
 from assessments.views import (
     PendingGradingListView, 
@@ -13,24 +19,20 @@ from assessments.views import (
     SubmitExamView, 
     StudentExamAttemptsView, 
     ExamSessionDetailView,
-    AdminStatsView,
-    ExaminerStatsView,
-    GradedHistoryListView,
-    GradingSessionDetailView
+    AdminStatsView
 )
-
-# Import Certificate Views (Ensure these match your certificates/views.py)
 from certificates.views import (
     DownloadCertificateView, 
     StudentCertificateListView, 
     CertificateInventoryView
 )
 
-# Router Configuration
+# --- Router Configuration ---
 router = DefaultRouter()
 router.register(r'exams', ExamViewSet, basename='exams')
 router.register(r'questions', QuestionViewSet, basename='questions')
 router.register(r'categories', CategoryViewSet, basename='categories')
+router.register(r'users', UserViewSet, basename='users')  # <--- THIS WAS MISSING
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -46,11 +48,11 @@ urlpatterns = [
     # --- Admin Dashboard Stats ---
     path('api/admin/stats/', AdminStatsView.as_view(), name='admin-stats'),
 
+    # --- Candidate Management (Fixes the 404 Error) ---
+    path('api/admin/candidates/', CandidateListView.as_view(), name='admin-candidates'),  # <--- THIS WAS MISSING
+
     # --- Examiner Dashboard & Grading ---
-    path('api/examiner/stats/', ExaminerStatsView.as_view(), name='examiner-stats'),
-    path('api/examiner/history/', GradedHistoryListView.as_view(), name='examiner-history'),
     path('api/admin/grading/pending/', PendingGradingListView.as_view(), name='grading-pending'),
-    path('api/admin/grading/session/<int:pk>/', GradingSessionDetailView.as_view(), name='grading-session-detail'),
     path('api/admin/grading/submit/<int:session_id>/', SubmitGradeView.as_view(), name='grading-submit'),
 
     # --- Student Dashboard & Exam Taking ---
@@ -59,7 +61,7 @@ urlpatterns = [
     path('api/exams/session/<int:session_id>/submit/', SubmitExamView.as_view(), name='submit_exam'),
     path('api/exams/session/<int:pk>/', ExamSessionDetailView.as_view(), name='session_detail'),
     
-    # --- Certificates (Standardized Paths) ---
+    # --- Certificates ---
     path('api/certificates/', StudentCertificateListView.as_view(), name='student-certificates'),
     path('api/certificates/download/<int:session_id>/', DownloadCertificateView.as_view(), name='download-certificate'),
     path('api/admin/certificates/', CertificateInventoryView.as_view(), name='admin-certificates'),
@@ -67,6 +69,6 @@ urlpatterns = [
     # --- Assessments App ---
     path('api/assessments/', include('assessments.urls')),
     
-    # --- Router Routes ---
+    # --- Router Routes (Exams, Questions, Users) ---
     path('api/', include(router.urls)),
 ]
