@@ -50,7 +50,7 @@ urlpatterns = [
 
     # --- Candidate Management (Fixes the 404 Error) ---
     path('api/admin/candidates/', CandidateListView.as_view(), name='admin-candidates'),  # <--- THIS WAS MISSING
-
+    
     # --- Examiner Dashboard & Grading ---
     path('api/admin/grading/pending/', PendingGradingListView.as_view(), name='grading-pending'),
     path('api/admin/grading/submit/<int:session_id>/', SubmitGradeView.as_view(), name='grading-submit'),
