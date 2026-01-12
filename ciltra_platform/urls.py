@@ -9,7 +9,8 @@ from users.views import (
     CustomLoginView, 
     UserProfileView,
     CandidateListView, 
-    UserViewSet
+    UserViewSet,
+    ExaminerManagementView
 )
 from exams.views import ExamViewSet, QuestionViewSet, CategoryViewSet
 from assessments.views import (
@@ -19,7 +20,8 @@ from assessments.views import (
     SubmitExamView, 
     StudentExamAttemptsView, 
     ExamSessionDetailView,
-    AdminStatsView
+    AdminStatsView,
+    AdminAnalyticsView
 )
 from certificates.views import (
     DownloadCertificateView, 
@@ -47,7 +49,9 @@ urlpatterns = [
 
     # --- Admin Dashboard Stats ---
     path('api/admin/stats/', AdminStatsView.as_view(), name='admin-stats'),
+   path('api/admin/analytics/', AdminAnalyticsView.as_view(), name='admin-analytics'),
 
+    path('api/admin/certificates/', CertificateInventoryView.as_view(), name='admin-certificates'),
     # --- Candidate Management (Fixes the 404 Error) ---
     path('api/admin/candidates/', CandidateListView.as_view(), name='admin-candidates'),  # <--- THIS WAS MISSING
     
@@ -68,6 +72,10 @@ urlpatterns = [
 
     # --- Assessments App ---
     path('api/assessments/', include('assessments.urls')),
+
+    # --- Examiner Management ---
+    path('api/admin/examiners/', ExaminerManagementView.as_view(), name='admin-examiners'),
+
     
     # --- Router Routes (Exams, Questions, Users) ---
     path('api/', include(router.urls)),

@@ -1,7 +1,11 @@
+# certificates/views.py
+
 import io
 from django.http import FileResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404
 from rest_framework import views, permissions, generics
+from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework.permissions import IsAuthenticated
 
 # ReportLab for PDF generation
 from reportlab.pdfgen import canvas
@@ -12,8 +16,7 @@ from reportlab.lib.units import inch
 from .models import Certificate
 from .serializers import CertificateSerializer
 from assessments.models import ExamSession
-from rest_framework_simplejwt.authentication import JWTAuthentication
-from rest_framework.permissions import IsAuthenticated
+
 # ==========================================
 #              STUDENT VIEWS
 # ==========================================
@@ -31,25 +34,41 @@ class StudentCertificateListView(generics.ListAPIView):
 
 
 class DownloadCertificateView(views.APIView):
+    """
+    Generates and downloads the PDF certificate.
+    Accessible by:
+    - The Student who owns the certificate (if they passed).
+    - Admins/Staff (can download ANY certificate).
+    """
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get(self, request, session_id):
-        session = get_object_or_404(ExamSession, id=session_id, user=request.user)
+        # --- 1. PERMISSION LOGIC ---
+        # If Admin/Staff -> Can download ANY session
+        # If Student -> Can ONLY download their OWN session
+        if request.user.is_staff or request.user.is_superuser:
+            session = get_object_or_404(ExamSession, id=session_id)
+        else:
+            session = get_object_or_404(ExamSession, id=session_id, user=request.user)
         
+        # --- 2. VALIDATION ---
+        # Check if the student actually passed
         pass_mark = getattr(session.exam, 'passing_score', getattr(session.exam, 'pass_mark_percentage', 50))
         if session.score < pass_mark:
-            return HttpResponseForbidden("You have not passed this exam yet.")
+            return HttpResponseForbidden("This candidate has not passed the exam yet.")
 
+        # Ensure Certificate record exists
         cert, created = Certificate.objects.get_or_create(session=session)
         display_id = getattr(cert, 'certificate_code', getattr(cert, 'certificate_id', str(cert.id)))
 
+        # --- 3. PDF GENERATION ---
         buffer = io.BytesIO()
         # Use Landscape A4 for a traditional certificate feel
         p = canvas.Canvas(buffer, pagesize=landscape(A4))
         width, height = landscape(A4)
 
-        # --- 1. PRESTIGE BORDER ---
+        # A. PRESTIGE BORDER
         p.setStrokeColorRGB(0.1, 0.1, 0.4) # Dark Navy
         p.setLineWidth(3)
         p.rect(0.4*inch, 0.4*inch, width-0.8*inch, height-0.8*inch) # Outer border
@@ -57,7 +76,7 @@ class DownloadCertificateView(views.APIView):
         p.setLineWidth(1)
         p.rect(0.5*inch, 0.5*inch, width-1.0*inch, height-1.0*inch) # Inner accent border
 
-        # --- 2. LOGO / TOP DECORATION ---
+        # B. HEADER / LOGO
         p.setFillColorRGB(0.1, 0.1, 0.4)
         p.setFont("Helvetica-Bold", 36)
         p.drawCentredString(width/2.0, height-2*inch, "CILTRA ACADEMY")
@@ -66,7 +85,7 @@ class DownloadCertificateView(views.APIView):
         p.setLineWidth(2)
         p.line(width/2.0 - 2*inch, height-2.2*inch, width/2.0 + 2*inch, height-2.2*inch)
 
-        # --- 3. MAIN TEXT ---
+        # C. MAIN TEXT
         p.setFillColorRGB(0, 0, 0)
         p.setFont("Helvetica", 18)
         p.drawCentredString(width/2.0, height-3.2*inch, "This acknowledges that")
@@ -82,14 +101,14 @@ class DownloadCertificateView(views.APIView):
         p.setFont("Helvetica-Bold", 22)
         p.drawCentredString(width/2.0, height-5.4*inch, f"The {session.exam.title}")
 
-        # --- 4. FOOTER DETAILS (Score & ID) ---
+        # D. FOOTER DETAILS (Score & ID)
         p.setFont("Helvetica", 12)
         p.setFillColorRGB(0.3, 0.3, 0.3) # Gray text
         p.drawString(1*inch, 1.8*inch, f"Date Issued: {cert.issued_at.strftime('%d %B %Y')}")
         p.drawString(1*inch, 1.55*inch, f"Certificate ID: {display_id}")
         p.drawString(1*inch, 1.3*inch, f"Final Grade: {session.score}%")
 
-        # --- 5. SIGNATURE SECTION ---
+        # E. SIGNATURE SECTION
         # Registrar Signature line
         p.setStrokeColorRGB(0, 0, 0)
         p.setLineWidth(1)
@@ -101,7 +120,7 @@ class DownloadCertificateView(views.APIView):
         p.setFont("Helvetica-Bold", 10)
         p.drawCentredString(width-2.25*inch, 1.3*inch, "DIRECTOR OF STUDIES")
 
-        # --- 6. GOLD SEAL DESIGN (Simulated) ---
+        # F. GOLD SEAL DESIGN (Simulated)
         p.setFillColorRGB(0.8, 0.6, 0.1) # Gold color
         p.circle(width/2.0, 1.5*inch, 0.5*inch, fill=1)
         p.setFillColorRGB(1, 1, 1)
@@ -109,6 +128,7 @@ class DownloadCertificateView(views.APIView):
         p.drawCentredString(width/2.0, 1.5*inch, "OFFICIAL")
         p.drawCentredString(width/2.0, 1.4*inch, "SEAL")
 
+        # --- 4. FINALIZE & RETURN ---
         p.showPage()
         p.save()
 

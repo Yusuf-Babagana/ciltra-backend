@@ -86,3 +86,31 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
     def get_object(self):
         # Magic: Simply returns the user who is currently logged in
         return self.request.user
+
+
+
+class ExaminerManagementView(generics.ListCreateAPIView):
+    """
+    GET: List all examiners
+    POST: Create a new examiner
+    """
+    permission_classes = [permissions.IsAdminUser] # Only Admin can access
+    serializer_class = RegisterSerializer 
+
+    def get_queryset(self):
+        # Only return users who are examiners
+        return User.objects.filter(role='examiner')
+
+    def create(self, request, *args, **kwargs):
+        # Force the role to be 'examiner' when Admin creates one
+        data = request.data.copy()
+        data['role'] = 'examiner' 
+        
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        
+        # Return the clean user data (without password)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+

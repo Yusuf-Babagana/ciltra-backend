@@ -1,11 +1,14 @@
-# ciltra-backend/assessments/views.py
+# assessments/views.py
 
 from rest_framework import generics, permissions, status, views
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.contrib.auth import get_user_model
-from django.db.models import Sum
+
+# --- ANALYTICS IMPORTS ---
+from django.db.models import Sum, Count, Avg
+from django.db.models.functions import TruncMonth
 
 # --- Models ---
 from .models import ExamSession, StudentAnswer
@@ -38,9 +41,12 @@ class AdminStatsView(views.APIView):
     permission_classes = [permissions.IsAdminUser]
 
     def get(self, request):
+        # Count all users who are NOT staff/admin as candidates
+        candidate_count = User.objects.filter(is_staff=False).count()
+
         return Response({
             "total_exams": Exam.objects.count(),
-            "total_candidates": User.objects.filter(is_staff=False).count(),
+            "total_candidates": candidate_count,
             "pending_grading": ExamSession.objects.filter(end_time__isnull=False, is_graded=False).count(),
             "issued_certificates": Certificate.objects.count()
         })
@@ -186,7 +192,6 @@ class SubmitExamView(views.APIView):
 
         for ans in answers_data:
             # Validate question belongs to this exam? (Optional but good security)
-            # For speed, we just get the question object
             try:
                 question = all_questions.get(id=ans['question_id'])
             except Question.DoesNotExist:
@@ -208,7 +213,6 @@ class SubmitExamView(views.APIView):
                         student_answer.selected_option = option
                         
                         if option.is_correct:
-                            # Earn points for this specific question
                             points = question.points
                             student_answer.awarded_marks = points
                             total_earned_points += points
@@ -407,3 +411,59 @@ class GradedHistoryListView(generics.ListAPIView):
 
     def get_queryset(self):
         return ExamSession.objects.filter(is_graded=True).order_by('-end_time')
+
+
+class AdminAnalyticsView(views.APIView):
+    """
+    Returns aggregated data for Admin Reports:
+    1. Monthly Registrations (Line Chart)
+    2. Pass vs Fail Ratio (Pie Chart)
+    3. Average Score per Exam (Bar Chart)
+    """
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        # 1. Monthly User Registrations (Last 12 Months)
+        monthly_users = User.objects.filter(role='student')\
+            .annotate(month=TruncMonth('date_joined'))\
+            .values('month')\
+            .annotate(count=Count('id'))\
+            .order_by('month')
+
+        registration_data = [
+            {
+                "name": item['month'].strftime('%b'), # Jan, Feb, etc.
+                "students": item['count']
+            } 
+            for item in monthly_users
+        ]
+
+        # 2. Pass vs Fail Ratio
+        # Assuming 50% is the generic pass mark for aggregation
+        sessions = ExamSession.objects.filter(end_time__isnull=False)
+        pass_count = sessions.filter(score__gte=50).count()
+        fail_count = sessions.filter(score__lt=50).count()
+
+        pass_fail_data = [
+            {"name": "Passed", "value": pass_count, "fill": "#22c55e"}, # Green
+            {"name": "Failed", "value": fail_count, "fill": "#ef4444"}, # Red
+        ]
+
+        # 3. Average Score per Exam (Top 5 Active Exams)
+        exam_performance = ExamSession.objects.values('exam__title')\
+            .annotate(avg_score=Avg('score'))\
+            .order_by('-avg_score')[:5]
+
+        performance_data = [
+            {
+                "name": item['exam__title'][:15] + "...", # Truncate long names
+                "score": round(item['avg_score'], 1)
+            }
+            for item in exam_performance
+        ]
+
+        return Response({
+            "registrations": registration_data,
+            "pass_fail": pass_fail_data,
+            "performance": performance_data
+        })
