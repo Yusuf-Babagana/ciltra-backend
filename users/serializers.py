@@ -38,7 +38,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         data['user'] = UserSerializer(self.user).data
         return data
 
-# --- ADD THIS: Serializer for Candidate List ---
 class CandidateListSerializer(serializers.ModelSerializer):
     exams_taken = serializers.SerializerMethodField()
     certificates_earned = serializers.SerializerMethodField()
