@@ -12,7 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 from datetime import timedelta  # <--- 1. ADD THIS IMPORT AT THE TOP
-
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     'assessments',
     'payments',
     'certificates',
+    'cores'
 ]
 
 MIDDLEWARE = [
@@ -191,3 +192,18 @@ SIMPLE_JWT = {
     'USER_ID_FIELD': 'id',
     'USER_ID_CLAIM': 'user_id',
 }
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+
+# ... existing code ...
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# --- PAYSTACK CONFIGURATION ---
+# The Backend needs the SECRET key to verify payments
+# Replace 'sk_test_...' with your actual Secret Key from Paystack Dashboard
+PAYSTACK_SECRET_KEY = "sk_test_f4bc777ea48e3fe932aecea60f0ebd8db0e7cd3c" 
+PAYSTACK_PUBLIC_KEY = "pk_test_ffd91b2e7cc6c88a030f82fa5e7407892ec5ae3b"

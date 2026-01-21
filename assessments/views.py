@@ -1,4 +1,8 @@
-# assessments/views.py
+import random
+import json
+import logging
+import io 
+import openpyxl
 
 from rest_framework import generics, permissions, status, views
 from rest_framework.response import Response
@@ -9,12 +13,19 @@ from django.contrib.auth import get_user_model
 # --- ANALYTICS IMPORTS ---
 from django.db.models import Sum, Count, Avg
 from django.db.models.functions import TruncMonth
+from django.http import HttpResponse, FileResponse 
+
+# ReportLab for PDF generation
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from reportlab.lib import colors
 
 # --- Models ---
 from .models import ExamSession, StudentAnswer
 from exams.models import Exam, Question, Option
 from payments.models import Payment 
 from certificates.models import Certificate
+from cores.models import AuditLog
 
 # --- Serializers ---
 from .serializers import (
@@ -28,22 +39,20 @@ from exams.serializers import (
     ExamSubmitSerializer
 )
 
+from .permissions import IsGraderOrAdmin 
+
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 # ==========================================
-#              ADMIN VIEWS
+#               ADMIN VIEWS
 # ==========================================
 
 class AdminStatsView(views.APIView):
-    """
-    Returns aggregated statistics for the Admin Dashboard.
-    """
     permission_classes = [permissions.IsAdminUser]
 
     def get(self, request):
-        # Count all users who are NOT staff/admin as candidates
         candidate_count = User.objects.filter(is_staff=False).count()
-
         return Response({
             "total_exams": Exam.objects.count(),
             "total_candidates": candidate_count,
@@ -53,7 +62,7 @@ class AdminStatsView(views.APIView):
 
 class PendingGradingListView(generics.ListAPIView):
     """List all exam sessions that require manual grading."""
-    permission_classes = [permissions.IsAuthenticated] 
+    permission_classes = [IsGraderOrAdmin] 
     serializer_class = ExamSessionSerializer
 
     def get_queryset(self):
@@ -61,21 +70,18 @@ class PendingGradingListView(generics.ListAPIView):
 
 class SubmitGradeView(views.APIView):
     """
-    Admin submits marks for manual questions (Translation/Theory).
-    Re-calculates the final percentage after grading.
+    Admin/Grader submits marks for manual questions.
     """
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGraderOrAdmin]
 
     def post(self, request, session_id):
         session = get_object_or_404(ExamSession, id=session_id)
         
-        grades = request.data.get('grades', []) # Expects: [{ "question_id": 1, "marks": 8 }]
+        grades = request.data.get('grades', []) 
         
-        # 1. Update the specific answers with new marks
         for grade in grades:
             answer = get_object_or_404(StudentAnswer, session=session, question_id=grade['question_id'])
             
-            # Validation: Don't give 15 marks for a 10-mark question
             max_points = answer.question.points
             awarded = float(grade['marks'])
             
@@ -89,24 +95,19 @@ class SubmitGradeView(views.APIView):
             answer.grader_comment = grade.get('comment', '')
             answer.save()
 
-        # 2. RE-CALCULATE TOTAL SCORE (Hybrid Logic)
-        # Calculate Total Possible Points for the Exam
+        # RE-CALCULATE TOTAL SCORE
         total_possible = session.exam.questions.aggregate(total=Sum('points'))['total'] or 0
-        
-        # Calculate Total Earned Points (MCQ + Manual)
         total_earned = StudentAnswer.objects.filter(session=session).aggregate(total=Sum('awarded_marks'))['total'] or 0
 
-        # Calculate Percentage
+        # --- FIX: Cast to float to avoid Decimal vs Float error ---
         if total_possible > 0:
-            final_percentage = (total_earned / total_possible) * 100
+            final_percentage = (float(total_earned) / float(total_possible)) * 100
         else:
             final_percentage = 0
 
-        # 3. Update Session Status
         session.score = final_percentage
-        session.is_graded = True # Marking complete
+        session.is_graded = True 
         
-        # Determine Pass/Fail
         pass_mark = getattr(session.exam, 'passing_score', getattr(session.exam, 'pass_mark_percentage', 50))
         
         if session.score >= pass_mark:
@@ -117,6 +118,15 @@ class SubmitGradeView(views.APIView):
             
         session.save()
         
+        # --- AUDIT LOG ---
+        AuditLog.objects.create(
+            actor=request.user,
+            action='GRADE',
+            target_model='ExamSession',
+            target_object_id=str(session.id),
+            details=f"Graded session #{session.id}. Final Score: {session.score}%"
+        )
+        
         return Response({
             "status": "Graded successfully", 
             "final_score": session.score,
@@ -125,21 +135,21 @@ class SubmitGradeView(views.APIView):
 
 
 # ==========================================
-#              STUDENT VIEWS
+#               STUDENT VIEWS
 # ==========================================
 
 class StartExamView(views.APIView):
     """
-    Student starts an exam. 
-    Creates a session and returns the exam details WITH questions.
+    Starts an exam session. 
+    Implements Randomization: Shuffles questions and creates placeholder answers.
     """
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, exam_id):
         exam = get_object_or_404(Exam, id=exam_id)
         
-        # 1. Payment Check (Security)
-        if not exam.is_free:
+        # 1. Payment Check
+        if exam.price > 0:
             has_paid = Payment.objects.filter(
                 user=request.user, 
                 exam=exam, 
@@ -152,7 +162,7 @@ class StartExamView(views.APIView):
                      status=status.HTTP_402_PAYMENT_REQUIRED
                  )
 
-        # 2. Check or Create Session
+        # 2. Create Session
         session, created = ExamSession.objects.get_or_create(
             user=request.user, 
             exam=exam, 
@@ -160,18 +170,22 @@ class StartExamView(views.APIView):
             defaults={'start_time': timezone.now()}
         )
 
-        # 3. Use the START serializer (Includes Questions)
+        # 3. RANDOMIZATION LOGIC
+        if not session.answers.exists():
+            questions = list(exam.questions.all())
+            
+            if getattr(exam, 'randomize_questions', False):
+                random.shuffle(questions)
+            
+            StudentAnswer.objects.bulk_create([
+                StudentAnswer(session=session, question=q) for q in questions
+            ])
+
         serializer = ExamSessionStartSerializer(session)
         return Response(serializer.data)
 
 
 class SubmitExamView(views.APIView):
-    """
-    Student submits answers.
-    - MCQs are auto-graded immediately based on 'points'.
-    - Theory/Translation questions are saved as 0 marks.
-    - Final score is calculated as a PERCENTAGE.
-    """
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, session_id):
@@ -181,70 +195,67 @@ class SubmitExamView(views.APIView):
             return Response({"error": "Exam already submitted"}, status=status.HTTP_400_BAD_REQUEST)
 
         answers_data = request.data.get('answers', [])
-        
-        total_earned_points = 0
+
+        if isinstance(answers_data, dict) and 'answers' in answers_data:
+            answers_data = answers_data['answers']
+
+        if isinstance(answers_data, str):
+            try:
+                answers_data = json.loads(answers_data)
+            except json.JSONDecodeError as e:
+                return Response({"error": "Invalid JSON format in answers"}, status=400)
+
+        if not isinstance(answers_data, list):
+            return Response({"error": "Invalid format. Expected a list of answers."}, status=400)
+
         has_manual_questions = False
         
-        # We need to know the total possible points to calculate percentage
-        # Fetch all questions for this exam to calculate the denominator
-        all_questions = session.exam.questions.all()
-        total_possible_points = sum(q.points for q in all_questions)
-
         for ans in answers_data:
-            # Validate question belongs to this exam? (Optional but good security)
-            try:
-                question = all_questions.get(id=ans['question_id'])
-            except Question.DoesNotExist:
-                continue # Skip invalid questions
+            if not isinstance(ans, dict): continue
 
-            # Create Answer Record
+            q_id = ans.get('question_id')
+            if not q_id: continue
+
             student_answer, created = StudentAnswer.objects.get_or_create(
                 session=session,
-                question=question,
-                defaults={'text_answer': ans.get('text_answer', '')}
+                question_id=q_id
             )
             
-            # --- LOGIC 1: MCQ (Auto-Grade) ---
+            question = student_answer.question 
+
             if question.question_type == Question.QuestionType.MCQ:
                 selected_opt_id = ans.get('answer') or ans.get('selected_option_id')
                 if selected_opt_id:
                     try:
                         option = Option.objects.get(id=int(selected_opt_id))
                         student_answer.selected_option = option
-                        
                         if option.is_correct:
-                            points = question.points
-                            student_answer.awarded_marks = points
-                            total_earned_points += points
+                            student_answer.awarded_marks = question.points
                         else:
                             student_answer.awarded_marks = 0
-                        
                         student_answer.save()
-                    except (Option.DoesNotExist, ValueError):
+                    except (Option.DoesNotExist, ValueError, TypeError):
                         pass 
             
-            # --- LOGIC 2: THEORY (Manual) ---
             else:
                 has_manual_questions = True
-                student_answer.awarded_marks = 0 # Waiting for admin
+                student_answer.awarded_marks = 0 
                 student_answer.text_answer = ans.get('text_answer', '')
                 student_answer.save()
 
-        # Finalize Session
         session.end_time = timezone.now()
         
-        # Calculate Percentage Score
-        if total_possible_points > 0:
-            percentage_score = (total_earned_points / total_possible_points) * 100
-        else:
-            percentage_score = 0
-            
-        session.score = percentage_score
+        total_earned = StudentAnswer.objects.filter(session=session).aggregate(sum=Sum('awarded_marks'))['sum'] or 0
+        total_possible = session.exam.questions.aggregate(sum=Sum('points'))['sum'] or 0
         
-        # Determine Status
+        if total_possible > 0:
+            session.score = (total_earned / total_possible) * 100
+        else:
+            session.score = 0
+            
         if has_manual_questions:
-            session.is_graded = False # Needs Admin Review
-            session.passed = False    # Can't pass until graded
+            session.is_graded = False 
+            session.passed = False    
         else:
             session.is_graded = True
             pass_mark = getattr(session.exam, 'passing_score', getattr(session.exam, 'pass_mark_percentage', 50))
@@ -260,14 +271,11 @@ class SubmitExamView(views.APIView):
             "status": "Submitted", 
             "score": session.score, 
             "is_graded": session.is_graded,
-            "message": "Exam submitted for grading." if has_manual_questions else "Exam completed."
+            "message": "Exam completed."
         })
 
 
 class ResultView(views.APIView):
-    """
-    Returns the final result of an exam session.
-    """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, session_id):
@@ -277,6 +285,10 @@ class ResultView(views.APIView):
             return Response({"error": "Exam not yet submitted"}, status=400)
 
         pass_mark = getattr(session.exam, 'passing_score', getattr(session.exam, 'pass_mark_percentage', 50))
+        
+        cert_id = None
+        if hasattr(session, 'certificate') and session.certificate:
+             cert_id = session.certificate.certificate_code 
 
         return Response({
             "exam_title": session.exam.title,
@@ -284,12 +296,11 @@ class ResultView(views.APIView):
             "passing_score": pass_mark,
             "is_passed": session.passed,
             "is_graded": session.is_graded,
-            "certificate_id": getattr(session, 'certificate', None) and session.certificate.id
+            "certificate_id": session.id 
         })
 
 
 class StudentExamAttemptsView(generics.ListAPIView):
-    """List all exam sessions for the logged-in student."""
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = ExamSessionSerializer
 
@@ -298,10 +309,6 @@ class StudentExamAttemptsView(generics.ListAPIView):
 
 
 class ExamSessionDetailView(generics.RetrieveAPIView):
-    """
-    Allow student to retrieve a specific session details.
-    Uses StartSerializer to ensure QUESTIONS are sent when resuming/refreshing.
-    """
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = ExamSessionStartSerializer 
     
@@ -311,12 +318,7 @@ class ExamSessionDetailView(generics.RetrieveAPIView):
     def get_object(self):
         return get_object_or_404(ExamSession, id=self.kwargs['pk'], user=self.request.user)
         
-# --- GetSessionView is required for the frontend hook ---
 class GetSessionView(views.APIView):
-    """
-    Retrieves an active session.
-    Used by the frontend to load questions when entering the Exam Room.
-    """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, session_id):
@@ -326,22 +328,15 @@ class GetSessionView(views.APIView):
 
 
 # ==========================================
-#              EXAMINER VIEWS
+#               EXAMINER/GRADER VIEWS
 # ==========================================
 
 class GradingSessionDetailView(views.APIView):
-    """
-    Retrieve full session details for an Examiner/Admin.
-    """
-    permission_classes = [permissions.IsAuthenticated] 
+    permission_classes = [IsGraderOrAdmin] 
 
     def get(self, request, pk):
         session = get_object_or_404(ExamSession, id=pk)
         
-        # Security check
-        if hasattr(request.user, 'role') and request.user.role == 'candidate' and not request.user.is_staff:
-             return Response({"error": "Unauthorized"}, status=status.HTTP_403_FORBIDDEN)
-
         # 1. Answers
         answers = StudentAnswer.objects.filter(session=session)
         answers_data = []
@@ -353,17 +348,22 @@ class GradingSessionDetailView(views.APIView):
                 "awarded_marks": ans.awarded_marks
             })
 
-        # 2. Questions (With Correct Answers)
+        # 2. Questions
         questions = session.exam.questions.all().order_by('id')
         questions_data = []
         for q in questions:
             opts = q.options.all()
+            
+            # Use Options to find correct text since q.correct_answer is gone
+            correct_opts = [o.text for o in opts if o.is_correct]
+            correct_answer_text = correct_opts[0] if correct_opts else "N/A"
+
             questions_data.append({
                 "id": q.id,
                 "text": q.text,
                 "question_type": q.question_type,
                 "points": q.points,
-                "correct_answer": q.correct_answer, 
+                "correct_answer": correct_answer_text,
                 "options": [{"id": o.id, "text": o.text, "is_correct": o.is_correct} for o in opts]
             })
 
@@ -392,8 +392,7 @@ class GradingSessionDetailView(views.APIView):
 
 
 class ExaminerStatsView(views.APIView):
-    """Returns statistics for the Examiner Dashboard."""
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGraderOrAdmin]
 
     def get(self, request):
         pending_count = ExamSession.objects.filter(end_time__isnull=False, is_graded=False).count()
@@ -405,8 +404,7 @@ class ExaminerStatsView(views.APIView):
         })
 
 class GradedHistoryListView(generics.ListAPIView):
-    """List all exam sessions that have been graded."""
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGraderOrAdmin]
     serializer_class = ExamSessionSerializer
 
     def get_queryset(self):
@@ -414,16 +412,9 @@ class GradedHistoryListView(generics.ListAPIView):
 
 
 class AdminAnalyticsView(views.APIView):
-    """
-    Returns aggregated data for Admin Reports:
-    1. Monthly Registrations (Line Chart)
-    2. Pass vs Fail Ratio (Pie Chart)
-    3. Average Score per Exam (Bar Chart)
-    """
     permission_classes = [permissions.IsAdminUser]
 
     def get(self, request):
-        # 1. Monthly User Registrations (Last 12 Months)
         monthly_users = User.objects.filter(role='student')\
             .annotate(month=TruncMonth('date_joined'))\
             .values('month')\
@@ -432,31 +423,28 @@ class AdminAnalyticsView(views.APIView):
 
         registration_data = [
             {
-                "name": item['month'].strftime('%b'), # Jan, Feb, etc.
+                "name": item['month'].strftime('%b'),
                 "students": item['count']
             } 
             for item in monthly_users
         ]
 
-        # 2. Pass vs Fail Ratio
-        # Assuming 50% is the generic pass mark for aggregation
         sessions = ExamSession.objects.filter(end_time__isnull=False)
         pass_count = sessions.filter(score__gte=50).count()
         fail_count = sessions.filter(score__lt=50).count()
 
         pass_fail_data = [
-            {"name": "Passed", "value": pass_count, "fill": "#22c55e"}, # Green
-            {"name": "Failed", "value": fail_count, "fill": "#ef4444"}, # Red
+            {"name": "Passed", "value": pass_count, "fill": "#22c55e"}, 
+            {"name": "Failed", "value": fail_count, "fill": "#ef4444"}, 
         ]
 
-        # 3. Average Score per Exam (Top 5 Active Exams)
         exam_performance = ExamSession.objects.values('exam__title')\
             .annotate(avg_score=Avg('score'))\
             .order_by('-avg_score')[:5]
 
         performance_data = [
             {
-                "name": item['exam__title'][:15] + "...", # Truncate long names
+                "name": item['exam__title'][:15] + "...", 
                 "score": round(item['avg_score'], 1)
             }
             for item in exam_performance
@@ -467,3 +455,134 @@ class AdminAnalyticsView(views.APIView):
             "pass_fail": pass_fail_data,
             "performance": performance_data
         })
+
+
+class ResetSessionView(views.APIView):
+    """
+    Admin Only: Deletes a session so the student can retake the exam.
+    """
+    permission_classes = [permissions.IsAdminUser] # Ensure permissions imported
+
+    def delete(self, request, session_id):
+        session = get_object_or_404(ExamSession, id=session_id)
+        
+        # Log the action before deleting
+        AuditLog.objects.create(
+            actor=request.user,
+            action='DELETE',
+            target_model='ExamSession',
+            details=f"Reset attempt for user {session.user.email} on exam {session.exam.title}"
+        )
+        
+        session.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ExportExamResultsView(views.APIView):
+    """
+    Admin Only: Downloads an Excel file of all results for a specific exam.
+    """
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, exam_id):
+        exam = get_object_or_404(Exam, id=exam_id)
+        
+        # 1. Setup Excel
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        response['Content-Disposition'] = f'attachment; filename="Results_{exam.title}.xlsx"'
+        
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Exam Results"
+
+        # 2. Header Row
+        headers = ['Student Name', 'Email', 'Date Taken', 'Score (%)', 'Status', 'Certificate Code']
+        ws.append(headers)
+        
+        # Style Header
+        for cell in ws[1]:
+            cell.font = openpyxl.styles.Font(bold=True)
+
+        # 3. Fetch Data
+        sessions = ExamSession.objects.filter(exam=exam, end_time__isnull=False).order_by('-score')
+        
+        for session in sessions:
+            cert_code = "N/A"
+            if hasattr(session, 'certificate'):
+                cert_code = session.certificate.certificate_code
+            
+            ws.append([
+                f"{session.user.first_name} {session.user.last_name}",
+                session.user.email,
+                session.end_time.strftime('%Y-%m-%d %H:%M'),
+                session.score,
+                "Passed" if session.passed else "Failed",
+                cert_code
+            ])
+
+        wb.save(response)
+        return response
+
+class DownloadResultView(views.APIView):
+    """
+    Generates a PDF Result Slip (Transcript) for any completed exam, 
+    regardless of pass/fail status.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, session_id):
+        # 1. Fetch Session
+        if request.user.is_staff:
+             session = get_object_or_404(ExamSession, id=session_id)
+        else:
+             session = get_object_or_404(ExamSession, id=session_id, user=request.user)
+
+        if not session.end_time:
+             return Response({"error": "Exam not completed"}, status=400)
+
+        # 2. Setup PDF
+        buffer = io.BytesIO()
+        p = canvas.Canvas(buffer, pagesize=letter)
+        width, height = letter
+
+        # 3. Draw Content
+        # Header
+        p.setFont("Helvetica-Bold", 20)
+        p.drawCentredString(width/2, height - 50, "EXAMINATION RESULT SLIP")
+        
+        p.line(50, height - 60, width - 50, height - 60)
+
+        # Details
+        y = height - 100
+        p.setFont("Helvetica", 12)
+        
+        details = [
+            f"Candidate Name:  {session.user.first_name} {session.user.last_name}",
+            f"Email Address:   {session.user.email}",
+            f"Exam Title:      {session.exam.title}",
+            f"Date Taken:      {session.end_time.strftime('%Y-%m-%d %H:%M')}",
+            f"Status:          {'PASSED' if session.passed else 'FAILED'}"
+        ]
+
+        for line in details:
+            p.drawString(70, y, line)
+            y -= 25
+
+        # Score Box
+        y -= 20
+        p.rect(70, y - 40, width - 140, 50, stroke=1, fill=0)
+        p.setFont("Helvetica-Bold", 16)
+        p.drawString(90, y - 25, f"Total Score: {session.score}%")
+
+        # Footer
+        p.setFont("Helvetica", 10)
+        p.drawCentredString(width/2, 50, "This result slip is computer generated and requires no signature.")
+
+        p.showPage()
+        p.save()
+        
+        buffer.seek(0)
+        filename = f"Result_{session.user.first_name}_{session.exam.title}.pdf"
+        return FileResponse(buffer, as_attachment=True, filename=filename)

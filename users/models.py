@@ -7,6 +7,7 @@ class User(AbstractUser):
         CANDIDATE = "candidate", "Candidate"
         EXAMINER = "examiner", "Examiner"
         ADMIN = "admin", "Admin"
+        GRADER = "grader", "Grader"  # <--- NEW ROLE ADDED HERE
 
     # Enforce unique email for authentication
     email = models.EmailField(unique=True) 
@@ -17,7 +18,7 @@ class User(AbstractUser):
     bio = models.TextField(blank=True)
     avatar = models.ImageField(upload_to="avatars/", blank=True, null=True)
 
-    # Set email as the main field for authentication (Optional but good practice)
+    # Set email as the main field for authentication
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username', 'first_name', 'last_name']
 

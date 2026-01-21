@@ -1,4 +1,3 @@
-# ciltra_platform/urls.py
 from django.contrib import admin
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
@@ -21,7 +20,8 @@ from assessments.views import (
     StudentExamAttemptsView, 
     ExamSessionDetailView,
     AdminStatsView,
-    AdminAnalyticsView
+    AdminAnalyticsView,
+    GradedHistoryListView  # <--- NEW IMPORT
 )
 from certificates.views import (
     DownloadCertificateView, 
@@ -34,7 +34,7 @@ router = DefaultRouter()
 router.register(r'exams', ExamViewSet, basename='exams')
 router.register(r'questions', QuestionViewSet, basename='questions')
 router.register(r'categories', CategoryViewSet, basename='categories')
-router.register(r'users', UserViewSet, basename='users')  # <--- THIS WAS MISSING
+router.register(r'users', UserViewSet, basename='users')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -49,15 +49,18 @@ urlpatterns = [
 
     # --- Admin Dashboard Stats ---
     path('api/admin/stats/', AdminStatsView.as_view(), name='admin-stats'),
-   path('api/admin/analytics/', AdminAnalyticsView.as_view(), name='admin-analytics'),
+    path('api/admin/analytics/', AdminAnalyticsView.as_view(), name='admin-analytics'),
 
     path('api/admin/certificates/', CertificateInventoryView.as_view(), name='admin-certificates'),
-    # --- Candidate Management (Fixes the 404 Error) ---
-    path('api/admin/candidates/', CandidateListView.as_view(), name='admin-candidates'),  # <--- THIS WAS MISSING
+    # --- Candidate Management ---
+    path('api/admin/candidates/', CandidateListView.as_view(), name='admin-candidates'),
     
     # --- Examiner Dashboard & Grading ---
     path('api/admin/grading/pending/', PendingGradingListView.as_view(), name='grading-pending'),
     path('api/admin/grading/submit/<int:session_id>/', SubmitGradeView.as_view(), name='grading-submit'),
+    
+    # --- NEW: Exam History Results ---
+    path('api/admin/grading/history/', GradedHistoryListView.as_view(), name='grading-history'), 
 
     # --- Student Dashboard & Exam Taking ---
     path('api/exams/attempts/', StudentExamAttemptsView.as_view(), name='student-attempts'),
@@ -68,15 +71,15 @@ urlpatterns = [
     # --- Certificates ---
     path('api/certificates/', StudentCertificateListView.as_view(), name='student-certificates'),
     path('api/certificates/download/<int:session_id>/', DownloadCertificateView.as_view(), name='download-certificate'),
-    path('api/admin/certificates/', CertificateInventoryView.as_view(), name='admin-certificates'),
-
+    
     # --- Assessments App ---
     path('api/assessments/', include('assessments.urls')),
 
     # --- Examiner Management ---
     path('api/admin/examiners/', ExaminerManagementView.as_view(), name='admin-examiners'),
 
-    
-    # --- Router Routes (Exams, Questions, Users) ---
+    # --- Router Routes ---
     path('api/', include(router.urls)),
+    path('api/core/', include('cores.urls')),
+    path('api/certificates/', include('certificates.urls')),
 ]

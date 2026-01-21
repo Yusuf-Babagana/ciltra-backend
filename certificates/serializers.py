@@ -6,7 +6,7 @@ class CertificateSerializer(serializers.ModelSerializer):
     candidate_email = serializers.ReadOnlyField(source='session.user.email')
     exam_title = serializers.ReadOnlyField(source='session.exam.title')
     score = serializers.ReadOnlyField(source='session.score')
-    session_id = serializers.ReadOnlyField(source='session.id')
+    session_id = serializers.IntegerField(source='session.id', read_only=True)
     certificate_url = serializers.SerializerMethodField()
 
     # MAP THE FIELD CORRECTLY:

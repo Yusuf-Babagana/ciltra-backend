@@ -1,6 +1,15 @@
 from rest_framework import serializers
 from .models import ExamSession, StudentAnswer
-from exams.serializers import ExamListSerializer, ExamDetailSerializer # <--- Ensure ExamDetailSerializer is imported
+from exams.serializers import ExamListSerializer, ExamDetailSerializer
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+# --- NEW: Helper to show User Names, not just IDs ---
+class UserSummarySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['id', 'first_name', 'last_name', 'email']
 
 class StudentAnswerSerializer(serializers.ModelSerializer):
     class Meta:
@@ -11,12 +20,14 @@ class StudentAnswerSerializer(serializers.ModelSerializer):
 class ExamSessionSerializer(serializers.ModelSerializer):
     """Lightweight serializer for lists / dashboard history."""
     exam = ExamListSerializer(read_only=True)
+    user = UserSummarySerializer(read_only=True) # <--- ADDED THIS LINE
     answers = StudentAnswerSerializer(many=True, read_only=True)
     status = serializers.SerializerMethodField()
     
     class Meta:
         model = ExamSession
-        fields = ['id', 'exam', 'start_time', 'end_time', 'score', 'passed', 'is_graded', 'answers', 'status']
+        # ADDED 'user' to fields list below
+        fields = ['id', 'user', 'exam', 'start_time', 'end_time', 'score', 'passed', 'is_graded', 'answers', 'status']
         read_only_fields = ['score', 'passed', 'start_time', 'end_time', 'is_graded']
 
     def get_status(self, obj):

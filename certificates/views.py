@@ -1,30 +1,35 @@
-# certificates/views.py
-
 import io
+import qrcode
+import os
+import requests 
 from django.http import FileResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404
-from rest_framework import views, permissions, generics
+# --- FIX 1: Added 'response' to imports ---
+from rest_framework import views, permissions, generics, response
 from rest_framework_simplejwt.authentication import JWTAuthentication
-from rest_framework.permissions import IsAuthenticated
+# --- FIX 2: Added 'AllowAny' to imports ---
+from rest_framework.permissions import IsAuthenticated, AllowAny
 
 # ReportLab for PDF generation
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import landscape, A4
 from reportlab.lib.units import inch
+from reportlab.lib.utils import ImageReader 
+from django.utils import timezone
 
-# Models & Serializers
+# Models
 from .models import Certificate
 from .serializers import CertificateSerializer
 from assessments.models import ExamSession
+from cores.models import PlatformSetting 
 
 # ==========================================
-#              STUDENT VIEWS
+#               STUDENT VIEWS
 # ==========================================
 
 class StudentCertificateListView(generics.ListAPIView):
     """
     Returns a list of all certificates earned by the logged-in student.
-    Used for the 'My Certificates' section on the dashboard.
     """
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = CertificateSerializer
@@ -34,116 +39,171 @@ class StudentCertificateListView(generics.ListAPIView):
 
 
 class DownloadCertificateView(views.APIView):
-    """
-    Generates and downloads the PDF certificate.
-    Accessible by:
-    - The Student who owns the certificate (if they passed).
-    - Admins/Staff (can download ANY certificate).
-    """
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get(self, request, session_id):
-        # --- 1. PERMISSION LOGIC ---
-        # If Admin/Staff -> Can download ANY session
-        # If Student -> Can ONLY download their OWN session
-        if request.user.is_staff or request.user.is_superuser:
-            session = get_object_or_404(ExamSession, id=session_id)
+        # 1. Validation Logic
+        if request.user.is_staff:
+             session = get_object_or_404(ExamSession, id=session_id)
         else:
-            session = get_object_or_404(ExamSession, id=session_id, user=request.user)
+             session = get_object_or_404(ExamSession, id=session_id, user=request.user)
+
+        pass_mark = getattr(session.exam, 'passing_score', 50)
+        current_score = session.score if session.score is not None else 0
         
-        # --- 2. VALIDATION ---
-        # Check if the student actually passed
-        pass_mark = getattr(session.exam, 'passing_score', getattr(session.exam, 'pass_mark_percentage', 50))
-        if session.score < pass_mark:
-            return HttpResponseForbidden("This candidate has not passed the exam yet.")
+        if current_score < pass_mark:
+            return HttpResponseForbidden("Exam not passed.")
 
-        # Ensure Certificate record exists
-        cert, created = Certificate.objects.get_or_create(session=session)
-        display_id = getattr(cert, 'certificate_code', getattr(cert, 'certificate_id', str(cert.id)))
+        cert, _ = Certificate.objects.get_or_create(session=session)
+        
+        # 2. LOAD ADMIN SETTINGS
+        platform_settings = PlatformSetting.load()
 
-        # --- 3. PDF GENERATION ---
+        # 3. Generate PDF
         buffer = io.BytesIO()
-        # Use Landscape A4 for a traditional certificate feel
         p = canvas.Canvas(buffer, pagesize=landscape(A4))
         width, height = landscape(A4)
 
-        # A. PRESTIGE BORDER
-        p.setStrokeColorRGB(0.1, 0.1, 0.4) # Dark Navy
-        p.setLineWidth(3)
-        p.rect(0.4*inch, 0.4*inch, width-0.8*inch, height-0.8*inch) # Outer border
-        
-        p.setLineWidth(1)
-        p.rect(0.5*inch, 0.5*inch, width-1.0*inch, height-1.0*inch) # Inner accent border
+        # --- A. INSERT LOGO FROM URL (Requested) ---
+        logo_url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQWsq2XyXP8SEteZmX4r9NT2_DP--oOzMhhFg&s"
+        logo_drawn = False
 
-        # B. HEADER / LOGO
-        p.setFillColorRGB(0.1, 0.1, 0.4)
-        p.setFont("Helvetica-Bold", 36)
-        p.drawCentredString(width/2.0, height-2*inch, "CILTRA ACADEMY")
-        
-        p.setStrokeColorRGB(0.7, 0.5, 0.1) # Gold line
-        p.setLineWidth(2)
-        p.line(width/2.0 - 2*inch, height-2.2*inch, width/2.0 + 2*inch, height-2.2*inch)
+        try:
+            res = requests.get(logo_url, timeout=5)
+            if res.status_code == 200:
+                logo_data = io.BytesIO(res.content)
+                # Draw Logo Top-Center
+                p.drawImage(ImageReader(logo_data), width/2 - 1*inch, height - 2.5*inch, width=2*inch, preserveAspectRatio=True, mask='auto')
+                logo_drawn = True
+        except Exception as e:
+            print(f"Could not load logo from URL: {e}")
 
-        # C. MAIN TEXT
-        p.setFillColorRGB(0, 0, 0)
+        # Fallback: If URL fails, try local settings
+        if not logo_drawn and platform_settings.certificate_logo:
+            try:
+                logo_path = platform_settings.certificate_logo.path
+                if os.path.exists(logo_path):
+                    p.drawImage(logo_path, width/2 - 1*inch, height - 2.5*inch, width=2*inch, preserveAspectRatio=True, mask='auto')
+            except Exception as e:
+                print(f"Could not load local logo: {e}")
+
+        # --- B. TEXT CONTENT ---
+        p.setFont("Helvetica-Bold", 30)
+        p.drawCentredString(width/2, height - 3.2*inch, "CERTIFICATE OF COMPLETION")
+        
         p.setFont("Helvetica", 18)
-        p.drawCentredString(width/2.0, height-3.2*inch, "This acknowledges that")
-
-        # Student Name (Bold & Large)
+        p.drawCentredString(width/2, height - 4.2*inch, "This is to certify that")
+        
+        # Student Name
         student_name = f"{session.user.first_name} {session.user.last_name}".upper()
         p.setFont("Times-BoldItalic", 32)
-        p.drawCentredString(width/2.0, height-4*inch, student_name)
+        p.drawCentredString(width/2, height - 5.2*inch, student_name)
 
-        p.setFont("Helvetica", 18)
-        p.drawCentredString(width/2.0, height-4.8*inch, "has demonstrated proficiency and successfully passed")
+        p.setFont("Helvetica", 16)
+        p.drawCentredString(width/2, height - 6.0*inch, "Has successfully completed the examination for")
         
         p.setFont("Helvetica-Bold", 22)
-        p.drawCentredString(width/2.0, height-5.4*inch, f"The {session.exam.title}")
+        p.drawCentredString(width/2, height - 6.6*inch, session.exam.title)
 
-        # D. FOOTER DETAILS (Score & ID)
-        p.setFont("Helvetica", 12)
-        p.setFillColorRGB(0.3, 0.3, 0.3) # Gray text
-        p.drawString(1*inch, 1.8*inch, f"Date Issued: {cert.issued_at.strftime('%d %B %Y')}")
-        p.drawString(1*inch, 1.55*inch, f"Certificate ID: {display_id}")
-        p.drawString(1*inch, 1.3*inch, f"Final Grade: {session.score}%")
+        # --- C. INSERT ADMIN SIGNATURE ---
+        if platform_settings.certificate_signature:
+            try:
+                sig_path = platform_settings.certificate_signature.path
+                if os.path.exists(sig_path):
+                    # Draw Signature Bottom-Right
+                    p.drawImage(sig_path, width - 4*inch, 1.8*inch, width=2*inch, height=1*inch, mask='auto')
+            except Exception as e:
+                print(f"Could not load signature: {e}")
 
-        # E. SIGNATURE SECTION
-        # Registrar Signature line
-        p.setStrokeColorRGB(0, 0, 0)
+        # Signature Line & Name
         p.setLineWidth(1)
-        p.line(width-3.5*inch, 1.5*inch, width-1*inch, 1.5*inch)
+        p.line(width - 4*inch, 1.6*inch, width - 1*inch, 1.6*inch) 
         
-        p.setFont("Times-Italic", 14)
-        p.drawCentredString(width-2.25*inch, 1.7*inch, "Oluwaseun A. Ciltra") # Example name
+        signer_name = platform_settings.certificate_signer_name or "Director"
+        signer_title = platform_settings.certificate_signer_title or "Admin"
+
+        p.setFont("Helvetica", 14)
+        p.drawCentredString(width - 2.5*inch, 1.3*inch, signer_name)
         
-        p.setFont("Helvetica-Bold", 10)
-        p.drawCentredString(width-2.25*inch, 1.3*inch, "DIRECTOR OF STUDIES")
+        p.setFont("Helvetica-Oblique", 10)
+        p.drawCentredString(width - 2.5*inch, 1.0*inch, signer_title)
 
-        # F. GOLD SEAL DESIGN (Simulated)
-        p.setFillColorRGB(0.8, 0.6, 0.1) # Gold color
-        p.circle(width/2.0, 1.5*inch, 0.5*inch, fill=1)
-        p.setFillColorRGB(1, 1, 1)
-        p.setFont("Helvetica-Bold", 8)
-        p.drawCentredString(width/2.0, 1.5*inch, "OFFICIAL")
-        p.drawCentredString(width/2.0, 1.4*inch, "SEAL")
+        # --- D. DYNAMIC QR CODE ---
+        host = request.get_host()
+        protocol = "https" if request.is_secure() else "http"
+        verification_url = f"{protocol}://{host}/verify/{cert.certificate_code}"
+        
+        qr_img = qrcode.make(verification_url)
+        qr_buffer = io.BytesIO()
+        qr_img.save(qr_buffer, format="PNG")
+        qr_buffer.seek(0)
+        
+        # Draw QR Code (Bottom Left)
+        p.drawImage(ImageReader(qr_buffer), 1*inch, 1*inch, width=1.5*inch, height=1.5*inch)
+        
+        p.setFont("Helvetica", 9)
+        p.drawString(1*inch, 0.8*inch, f"ID: {cert.certificate_code}")
 
-        # --- 4. FINALIZE & RETURN ---
         p.showPage()
         p.save()
-
         buffer.seek(0)
-        return FileResponse(buffer, as_attachment=True, filename=f"Certificate_{display_id}.pdf")
+        return FileResponse(buffer, as_attachment=True, filename=f"Certificate_{cert.certificate_code}.pdf")
 
-        
-# ==========================================
-#              ADMIN VIEWS
-# ==========================================
 
+# --- UPDATE 1: Inventory View (Include User Details) ---
 class CertificateInventoryView(generics.ListAPIView):
-    """
-    Allows Admins to see all certificates issued across the platform.
-    """
     permission_classes = [permissions.IsAdminUser]
     serializer_class = CertificateSerializer
-    queryset = Certificate.objects.all().order_by('-issued_at')
+    # Order by revocation status (revoked first) then date
+    queryset = Certificate.objects.all().order_by('-is_revoked', '-issued_at')
+
+# --- UPDATE 2: Verification View (Check Revocation) ---
+class VerifyCertificateView(views.APIView):
+    permission_classes = [AllowAny] 
+
+    def get(self, request, code):
+        try:
+            cert = Certificate.objects.get(certificate_code__iexact=code)
+        except Certificate.DoesNotExist:
+            return response.Response({"is_valid": False, "status": "not_found"}, status=404)
+        
+        # Check Revocation
+        if cert.is_revoked:
+             return response.Response({
+                "is_valid": False,
+                "status": "revoked",
+                "revocation_reason": cert.revocation_reason,
+                "certificate_code": cert.certificate_code,
+                "student_name": f"{cert.session.user.first_name} {cert.session.user.last_name}",
+                "exam_title": cert.session.exam.title,
+                "issued_at": cert.issued_at,
+            })
+
+        return response.Response({
+            "is_valid": True,
+            "status": "valid",
+            "certificate_code": cert.certificate_code,
+            "student_name": f"{cert.session.user.first_name} {cert.session.user.last_name}",
+            "exam_title": cert.session.exam.title,
+            "issued_at": cert.issued_at,
+            "score": cert.session.score
+        })
+
+# --- NEW VIEW: Revoke Certificate ---
+class RevokeCertificateView(views.APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def post(self, request, pk):
+        cert = get_object_or_404(Certificate, id=pk)
+        reason = request.data.get('reason', 'Administrative decision')
+        
+        if cert.is_revoked:
+             return response.Response({"message": "Already revoked"}, status=400)
+
+        cert.is_revoked = True
+        cert.revocation_reason = reason
+        cert.revoked_at = timezone.now()
+        cert.save()
+        
+        return response.Response({"status": f"Certificate {cert.certificate_code} has been revoked."})

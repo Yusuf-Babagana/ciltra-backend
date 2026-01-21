@@ -1,74 +1,71 @@
-# ciltra_platform/exams/models.py
 from django.db import models
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
 
 class ExamCategory(models.Model):
-    name = models.CharField(max_length=100)
+    name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True)
-    
+
     def __str__(self):
         return self.name
 
 class Exam(models.Model):
     title = models.CharField(max_length=255)
-    category = models.ForeignKey(ExamCategory, on_delete=models.SET_NULL, null=True, related_name='exams')
-    description = models.TextField()
-    price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    currency = models.CharField(max_length=3, default="NGN")
+    description = models.TextField(blank=True)
     
-    duration_minutes = models.PositiveIntegerField()
-    pass_mark_percentage = models.PositiveIntegerField(default=50)
-    
-    is_active = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    payment_link = models.URLField(
-        max_length=500, 
-        blank=True, 
+    # --- RESTORED CATEGORY FIELD ---
+    category = models.ForeignKey(
+        ExamCategory, 
+        on_delete=models.SET_NULL, 
         null=True, 
-        help_text="Paste your Paystack Product Link here"
+        blank=True, 
+        related_name='exams'
     )
+
+    duration_minutes = models.IntegerField(help_text="Duration in minutes")
+    
+    # Scoring Rules
+    pass_mark_percentage = models.FloatField(default=50.0)
+    
+    GRADING_TYPES = [
+        ('auto', 'Automatic (Instant Result)'),
+        ('manual', 'Manual / Hybrid (Wait for Grader)'),
+    ]
+    grading_type = models.CharField(max_length=10, choices=GRADING_TYPES, default='auto')
+    
+    randomize_questions = models.BooleanField(default=False)
+    price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.title
-    
-    @property
-    def is_free(self):
-        return self.price == 0.00
 
 class Question(models.Model):
     class QuestionType(models.TextChoices):
-        MCQ = "mcq", "Multiple Choice"
-        THEORY = "theory", "Open Ended / Translation"
+        MCQ = 'MCQ', 'Multiple Choice'
+        THEORY = 'THEORY', 'Theory / Essay'
 
-    class Difficulty(models.TextChoices):
-        EASY = "easy", "Easy"
-        MEDIUM = "medium", "Medium"
-        HARD = "hard", "Hard"
-
-    # Nullable Exam: Allows questions to sit in the "Bank" without being assigned
-    exam = models.ForeignKey(Exam, related_name='questions', on_delete=models.SET_NULL, null=True, blank=True)
+    exam = models.ForeignKey(Exam, related_name='questions', on_delete=models.CASCADE)
+    section = models.CharField(max_length=100, blank=True, null=True, help_text="e.g., Section A")
     
-    # Text content
     text = models.TextField()
-    question_type = models.CharField(max_length=20, choices=QuestionType.choices, default=QuestionType.MCQ)
-    
-    # Metadata for the Bank
-    category = models.CharField(max_length=100, blank=True)
-    difficulty = models.CharField(max_length=20, choices=Difficulty.choices, default=Difficulty.MEDIUM)
-    
-    # UPDATED: Better default and help text for clarity
-    points = models.PositiveIntegerField(
-        default=2, 
-        help_text="Marks for this question (e.g., 2 for MCQ, 10 for Theory)"
+    question_type = models.CharField(
+        max_length=10, 
+        choices=QuestionType.choices, 
+        default=QuestionType.MCQ
     )
-
-    # Answers
-    correct_answer = models.TextField(blank=True, help_text="Correct answer text or reference (for Theory)")
+    points = models.FloatField(default=1.0)
+    negative_points = models.FloatField(default=0.0) 
 
     def __str__(self):
-        return f"{self.text[:50]}..."
+        return f"{self.exam.title} - {self.text[:50]}"
 
 class Option(models.Model):
     question = models.ForeignKey(Question, related_name='options', on_delete=models.CASCADE)
     text = models.CharField(max_length=255)
     is_correct = models.BooleanField(default=False)
+
+    def __str__(self):
+        return self.text
