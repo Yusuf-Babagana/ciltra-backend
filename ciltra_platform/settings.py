@@ -207,3 +207,8 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 # Replace 'sk_test_...' with your actual Secret Key from Paystack Dashboard
 PAYSTACK_SECRET_KEY = "sk_test_f4bc777ea48e3fe932aecea60f0ebd8db0e7cd3c" 
 PAYSTACK_PUBLIC_KEY = "pk_test_ffd91b2e7cc6c88a030f82fa5e7407892ec5ae3b"
+
+
+
+# settings.py
+APPEND_SLASH = True # This should be True (default)

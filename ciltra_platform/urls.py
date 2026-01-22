@@ -11,7 +11,7 @@ from users.views import (
     UserViewSet,
     ExaminerManagementView
 )
-from exams.views import ExamViewSet, QuestionViewSet, CategoryViewSet
+from exams.views import ExamViewSet, QuestionViewSet, CategoryViewSet, list_backups, perform_restore,download_backup, delete_backup, create_backup_view
 from assessments.views import (
     PendingGradingListView, 
     SubmitGradeView, 
@@ -21,7 +21,9 @@ from assessments.views import (
     ExamSessionDetailView,
     AdminStatsView,
     AdminAnalyticsView,
-    GradedHistoryListView  # <--- NEW IMPORT
+    GradedHistoryListView,
+    
+     # <--- NEW IMPORT
 )
 from certificates.views import (
     DownloadCertificateView, 
@@ -82,4 +84,13 @@ urlpatterns = [
     path('api/', include(router.urls)),
     path('api/core/', include('cores.urls')),
     path('api/certificates/', include('certificates.urls')),
+
+   # 1. MOVE BACKUP ROUTES HERE (Above the router)
+    path('api/admin/backups/list/', list_backups, name='admin-backups-list'),
+    path('api/admin/backups/restore/', perform_restore, name='admin-backups-restore'),
+    path('api/admin/backups/download/<str:filename>/', download_backup, name='admin-backups-download'),
+    path('api/admin/backups/delete/<str:filename>/', delete_backup, name='admin-backups-delete'),
+    path('api/admin/backups/create/', create_backup_view, name='admin-backups-create'),
+    
+
 ]

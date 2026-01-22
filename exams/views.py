@@ -14,6 +14,18 @@ from .serializers import (
 
 import csv
 import io
+
+import os
+from django.conf import settings
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAdminUser
+from rest_framework.response import Response
+from django.core.management import call_command
+
+
+from django.http import FileResponse
+import shutil
+
 # --- FIX 1: Import JSONParser ---
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
@@ -223,3 +235,75 @@ class CategoryViewSet(viewsets.ModelViewSet):
     queryset = ExamCategory.objects.all()
     serializer_class = ExamCategorySerializer
     permission_classes = [permissions.IsAdminUser]
+
+
+
+
+@api_view(['GET'])
+@permission_classes([IsAdminUser])
+def list_backups(request):
+    backup_dir = os.path.join(settings.BASE_DIR, 'backups')
+    if not os.path.exists(backup_dir):
+        return Response([])
+    files = [f for f in os.listdir(backup_dir) if f.endswith('.sqlite3')]
+    return Response(sorted(files, reverse=True))
+
+@api_view(['POST'])
+@permission_classes([IsAdminUser])
+def perform_restore(request):
+    filename = request.data.get('filename')
+    try:
+        call_command('restore_db', filename)
+        return Response({"message": "Database successfully restored. Restarting server..."})
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
+
+
+
+
+@api_view(['GET'])
+@permission_classes([IsAdminUser])
+def download_backup(request, filename):
+    backup_file = os.path.join(settings.BASE_DIR, 'backups', filename)
+    if os.path.exists(backup_file):
+        return FileResponse(open(backup_file, 'rb'), as_attachment=True)
+    return Response({"error": "File not found"}, status=404)
+
+@api_view(['DELETE'])
+@permission_classes([IsAdminUser])
+def delete_backup(request, filename):
+    backup_file = os.path.join(settings.BASE_DIR, 'backups', filename)
+    if os.path.exists(backup_file):
+        os.remove(backup_file)
+        return Response({"message": "Backup deleted"})
+    return Response({"error": "File not found"}, status=404)
+
+
+@api_view(['POST'])
+@permission_classes([IsAdminUser])
+def create_backup_view(request):
+    """
+    Triggers the backup script logic to create a new .sqlite3 snapshot.
+    """
+    try:
+        # We import the logic from your script to avoid code duplication
+        from scripts.backup_local import run_backup
+        
+        # Execute the backup logic
+        run_backup()
+        
+        return Response({
+            "status": "success",
+            "message": "System snapshot created successfully."
+        })
+    except ImportError:
+        return Response({
+            "status": "error", 
+            "message": "Backup script not found in scripts/backup_local.py"
+        }, status=500)
+    except Exception as e:
+        return Response({
+            "status": "error",
+            "message": str(e)
+        }, status=500)
