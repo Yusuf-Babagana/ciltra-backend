@@ -265,9 +265,9 @@ def list_backups(request):
 
             files.append({
                 "filename": f,
-                "size": stats.st_size,
-                "created_at": readable_date  # Frontend can now render this
-            })
+                "size": f"{round(stats.st_size / 1024, 2)} KB", # Size as a string
+                "created_at": readable_date  # ISO String
+                })
     
     files.sort(key=lambda x: x['created_at'], reverse=True)
     return Response(files)
