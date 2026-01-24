@@ -28,3 +28,26 @@ jobs:
             # Use sudo without a password prompt
             sudo systemctl restart gunicorn
             echo "Backend successfully updated!"
+
+
+
+script: |
+            cd /home/deployer/ciltra-backend
+            # 1. Force pull to ignore small local changes if they exist
+            git fetch origin main
+            git reset --hard origin/main
+            
+            # 2. Use absolute path for venv
+            source /home/deployer/venv/bin/activate
+            
+            # 3. Standard deployment steps
+            pip install -r requirements.txt
+            python manage.py migrate --noinput
+            
+            # 4. Ensure the folder exists before collecting
+            mkdir -p staticfiles
+            python manage.py collectstatic --noinput
+            
+            # 5. Restart services
+            sudo systemctl restart gunicorn
+            echo "Backend successfully updated and Gunicorn restarted!"
