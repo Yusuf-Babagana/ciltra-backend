@@ -257,13 +257,18 @@ def list_backups(request):
         if f.endswith('.sqlite3'):
             path = os.path.join(backup_dir, f)
             stats = os.stat(path)
+            
+            # --- FIX: Convert timestamp to a readable ISO string ---
+            from datetime import datetime
+            dt_object = datetime.fromtimestamp(stats.st_mtime)
+            readable_date = dt_object.isoformat() 
+
             files.append({
                 "filename": f,
                 "size": stats.st_size,
-                "created_at": stats.st_mtime
+                "created_at": readable_date  # Frontend can now render this
             })
     
-    # Sort by newest first
     files.sort(key=lambda x: x['created_at'], reverse=True)
     return Response(files)
 
