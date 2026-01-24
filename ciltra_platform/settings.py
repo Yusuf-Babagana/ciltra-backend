@@ -32,7 +32,6 @@ ALLOWED_HOSTS = [
     "localhost", 
     "127.0.0.1", 
     "ciltra.org", 
-    "www.ciltra.org",
     "cpt-cpt.ciltra.org"  # Based on your Nginx config
 ]
 
@@ -212,3 +211,9 @@ PAYSTACK_PUBLIC_KEY = "pk_test_ffd91b2e7cc6c88a030f82fa5e7407892ec5ae3b"
 
 # settings.py
 APPEND_SLASH = True # This should be True (default)
+
+# Ensure these are present
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
