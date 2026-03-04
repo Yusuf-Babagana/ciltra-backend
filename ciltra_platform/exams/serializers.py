@@ -1,18 +1,24 @@
 # ciltra_platform/exams/serializers.py
 from rest_framework import serializers
 from .models import Exam, Question, Option, ExamCategory
+from cores.models import LanguagePair
 
 class OptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Option
         fields = ['id', 'text', 'is_correct']
 
+class LanguagePairSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LanguagePair
+        fields = ['id', 'source_language', 'target_language', 'pair_code']
+
 class QuestionSerializer(serializers.ModelSerializer):
     options = OptionSerializer(many=True, read_only=True)
-    
+
     class Meta:
         model = Question
-        fields = ['id', 'text', 'question_type', 'category', 'difficulty', 'points', 'options', 'created_at']
+        fields = ['id', 'text', 'question_type', 'category', 'difficulty', 'points', 'options']
 
 class ExamCategorySerializer(serializers.ModelSerializer):
     class Meta:
@@ -28,10 +34,28 @@ class ExamListSerializer(serializers.ModelSerializer):
         fields = ['id', 'title', 'description', 'category_name', 'duration_minutes', 'price', 'is_active', 'created_at']
 
 class ExamSerializer(serializers.ModelSerializer):
-    """Standard serializer for Admin CRUD."""
+    """Standard serializer for Admin CRUD — includes all CPT architecture fields."""
+    # Nested read-only view of the linked language pair
+    language_pair_data = LanguagePairSerializer(source='language_pair', read_only=True)
+
+    # CPT blueprint/instance fields
+    is_blueprint = serializers.BooleanField(default=False)
+
+    # Section weights
+    weight_section_a = serializers.FloatField(default=15.0)
+    weight_section_b = serializers.FloatField(default=65.0)
+    weight_section_c = serializers.FloatField(default=20.0)
+
     class Meta:
         model = Exam
-        fields = '__all__'
+        fields = [
+            'id', 'title', 'description', 'category',
+            'is_blueprint', 'blueprint',
+            'language_pair', 'language_pair_data', 'allowed_directions',
+            'duration_minutes', 'pass_mark_percentage', 'price', 'currency',
+            'weight_section_a', 'weight_section_b', 'weight_section_c',
+            'is_active', 'created_at',
+        ]
 
 class ExamDetailSerializer(serializers.ModelSerializer):
     """Heavy serializer WITH questions."""

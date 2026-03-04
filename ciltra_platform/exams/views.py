@@ -19,9 +19,33 @@ from .serializers import (
 from users.permissions import IsTeacher, IsStudent, IsAdmin 
 
 class ExamViewSet(viewsets.ModelViewSet):
+    # Note: get_queryset() overrides this at runtime; kept for DRF router introspection.
     queryset = Exam.objects.all().order_by('-created_at')
     filter_backends = [filters.SearchFilter]
-    search_fields = ['title', 'category__name']
+    search_fields = ['title', 'category__name', 'language_pair__pair_code']
+
+    def get_queryset(self):
+        user = self.request.user
+
+        # Staff, teachers, and admins see ALL exams (active or not) for management.
+        if user.is_staff or getattr(user, 'role', None) in ('teacher', 'admin'):
+            return Exam.objects.all().order_by('-created_at')
+
+        # Students start from only active exams.
+        queryset = Exam.objects.filter(is_active=True)
+
+        # ── Language Pair Filtering ───────────────────────────────────────────
+        # Priority 1: explicit query param  ?language_pair=<id>
+        lp_param = self.request.query_params.get('language_pair')
+        if lp_param:
+            queryset = queryset.filter(language_pair_id=lp_param)
+
+        # Priority 2: user's profile field  user.selected_language_pair
+        elif hasattr(user, 'selected_language_pair') and user.selected_language_pair:
+            queryset = queryset.filter(language_pair=user.selected_language_pair)
+
+        # If neither is set, return all active exams (no language-pair restriction yet).
+        return queryset.order_by('-created_at')
 
     def get_serializer_class(self):
         if self.action == 'retrieve':
