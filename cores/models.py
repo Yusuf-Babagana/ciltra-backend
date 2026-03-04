@@ -74,3 +74,12 @@ class AuditLog(models.Model):
 
     def __str__(self):
         return f"{self.actor} - {self.action} - {self.timestamp}"
+
+
+class LanguagePair(models.Model):
+    source_language = models.CharField(max_length=50, help_text="e.g. English")
+    target_language = models.CharField(max_length=50, help_text="e.g. French")
+    pair_code = models.CharField(max_length=10, unique=True, help_text="e.g. EN-FR")
+
+    def __str__(self):
+        return self.pair_code
