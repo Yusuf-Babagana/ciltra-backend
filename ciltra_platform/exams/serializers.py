@@ -18,7 +18,7 @@ class QuestionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Question
-        fields = ['id', 'text', 'question_type', 'category', 'difficulty', 'points', 'options']
+        fields = ['id', 'text', 'question_type', 'section', 'category', 'difficulty', 'points', 'options']
 
 class ExamCategorySerializer(serializers.ModelSerializer):
     class Meta:

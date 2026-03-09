@@ -27,3 +27,10 @@ class ExamSessionSerializer(serializers.ModelSerializer):
 class ActiveExamSessionSerializer(ExamSessionSerializer):
     """Heavy serializer for taking the exam. Includes QUESTIONS."""
     exam = ExamDetailSerializer(read_only=True)
+
+class ExamSessionStartSerializer(serializers.ModelSerializer):
+    """Serializer used specifically for starting a session."""
+    exam = ExamListSerializer(read_only=True)
+    class Meta:
+        model = ExamSession
+        fields = ['id', 'exam', 'start_time']

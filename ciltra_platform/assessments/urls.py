@@ -1,7 +1,9 @@
 from django.urls import path
 from .views import (
-    PendingGradingListView, SubmitGradeView, StartExamView, 
-    SubmitExamView, ExamSessionDetailView, DownloadResultView
+    PendingGradingListView, SubmitGradeView, StartExamView,
+    SubmitExamView, ExamSessionDetailView, DownloadResultView,
+    HeartbeatSaveView,
+    ExaminerQueueView # Added ExaminerQueueView
 )
 
 urlpatterns = [
@@ -16,5 +18,6 @@ urlpatterns = [
 
     path('api/exams/session/<int:pk>/', ExamSessionDetailView.as_view(), name='session_detail'),
     path('api/exams/session/<int:session_id>/download/', DownloadResultView.as_view(), name='download_result'),
-
+    path('api/exams/session/<int:session_id>/heartbeat/', HeartbeatSaveView.as_view(), name='heartbeat_save'),
+    path('examiner/queue/', ExaminerQueueView.as_view(), name='examiner_queue'), # Added new path
 ]

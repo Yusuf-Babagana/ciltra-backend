@@ -13,10 +13,11 @@ from .models import ExamSession, StudentAnswer
 from .serializers import (
     ExamSessionSerializer, 
     StudentAnswerSerializer, 
-    ActiveExamSessionSerializer
+    ActiveExamSessionSerializer,
+    ExamSessionStartSerializer
 )
 
-from exams.models import Exam, Question, Option
+from exams.models import Exam, Question, Option, ExaminerAssignment
 from exams.serializers import ExamDetailSerializer
 from certificates.models import Certificate
 from users.permissions import IsTeacher, IsStudent, IsAdmin
@@ -34,11 +35,12 @@ class AdminStatsView(views.APIView):
     def get(self, request):
         return Response({
             "total_exams": Exam.objects.count(),
-            # Count users who are NOT admins/staff as students
             "total_candidates": User.objects.filter(is_staff=False, role='student').count(),
-            # pending_grading = Submitted (end_time set) but NOT graded
             "pending_grading": ExamSession.objects.filter(end_time__isnull=False, is_graded=False).count(),
-            "issued_certificates": Certificate.objects.count()
+            "issued_certificates": Certificate.objects.count(),
+            # Aliases for Examiner Dashboard
+            "pending": ExamSession.objects.filter(end_time__isnull=False, is_graded=False).count(),
+            "graded": ExamSession.objects.filter(is_graded=True).count()
         })
 
 
@@ -167,26 +169,38 @@ class StartExamView(views.APIView):
     def post(self, request, exam_id):
         exam = get_object_or_404(Exam, id=exam_id)
         
+        # 1. Fetch the candidate's specific enrollment metadata via Profile
+        user_specialization = getattr(request.user.profile, 'specialization', None)
+
         # Check if active session already exists (resume)
-        active_session = ExamSession.objects.filter(
+        session, created = ExamSession.objects.get_or_create(
             user=request.user, 
             exam=exam, 
             end_time__isnull=True
-        ).first()
-
-        if active_session:
-            # Resume existing session using the 'Active' serializer (includes questions)
-            serializer = ActiveExamSessionSerializer(active_session)
-            return Response(serializer.data)
-
-        # Create new session
-        session = ExamSession.objects.create(
-            user=request.user,
-            exam=exam
         )
-        
-        serializer = ActiveExamSessionSerializer(session)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        if not session.answers.exists():
+            # 2. FILTER QUESTIONS: A, B1, B2 (Matching), and C
+            all_questions = exam.questions.all()
+            
+            # Logic: Keep all A, C, and B1. For B2, only keep matching specialization.
+            filtered_questions = []
+            for q in all_questions:
+                # Using case-insensitive check to be safe with "Section B2"
+                if q.section and "Section B2" in q.section:
+                    # Only add if the question's specialization matches the user
+                    if q.specialization == user_specialization:
+                        filtered_questions.append(q)
+                else:
+                    filtered_questions.append(q)
+
+            # 3. Create placeholder answers for the filtered set
+            StudentAnswer.objects.bulk_create([
+                StudentAnswer(session=session, question=q) for q in filtered_questions
+            ])
+
+        serializer = ExamSessionStartSerializer(session)
+        return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
 
 class SubmitExamView(views.APIView):
@@ -375,3 +389,36 @@ class DownloadResultView(views.APIView):
         
         buffer.seek(0)
         return FileResponse(buffer, as_attachment=True, filename=f"CPT_Transcript_{session.id}.pdf")
+
+
+class HeartbeatSaveView(views.APIView):
+    """
+    Lightweight endpoint to update the text_answer for a specific question 
+    without ending the session or triggering the full grading engine.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, session_id):
+        session = get_object_or_404(ExamSession, id=session_id, user=request.user)
+        
+        # Security: Prevent updates if session is already submitted
+        if session.end_time:
+            return Response({"error": "Session locked"}, status=status.HTTP_403_FORBIDDEN)
+
+        question_id = request.data.get('question_id')
+        answer_text = request.data.get('text_answer', '')
+
+        if not question_id:
+            return Response({"error": "question_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Fast update or create
+        StudentAnswer.objects.update_or_create(
+            session=session,
+            question_id=question_id,
+            defaults={'text_answer': answer_text}
+        )
+
+        return Response({
+            "status": "synced", 
+            "timestamp": timezone.now()
+        })

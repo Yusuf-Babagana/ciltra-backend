@@ -13,7 +13,8 @@ from assessments.views import (
     SubmitExamView, 
     StudentExamAttemptsView, 
     ExamSessionDetailView,
-    AdminStatsView
+    AdminStatsView,
+    HeartbeatSaveView
 )
 from certificates.views import CertificateInventoryView, StudentCertificateListView
 
@@ -40,6 +41,7 @@ urlpatterns = [
     path('api/exams/attempts/', StudentExamAttemptsView.as_view(), name='student-attempts'),
     path('api/exams/<int:exam_id>/start/', StartExamView.as_view(), name='start_exam'),
     path('api/exams/session/<int:session_id>/submit/', SubmitExamView.as_view(), name='submit_exam'),
+    path('api/exams/session/<int:session_id>/heartbeat/', HeartbeatSaveView.as_view(), name='heartbeat_save'),
     path('api/exams/session/<int:pk>/', ExamSessionDetailView.as_view(), name='session_detail'),
     
     # --- Student Certificates ---
