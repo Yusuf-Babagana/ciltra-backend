@@ -29,6 +29,21 @@ class Exam(models.Model):
         through='ExaminerAssignment', 
         related_name='assigned_exams'
     )
+
+    # --- CPT ARCHITECTURE EXTENSIONS ---
+    is_blueprint = models.BooleanField(default=False, help_text="Is this a template (e.g., CPT General)?")
+    blueprint = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='instances'
+    )
+
+    # Section Weights (sum to 100%)
+    weight_section_a = models.FloatField(default=15.0, help_text="Section A: Core Knowledge (%)")
+    weight_section_b = models.FloatField(default=65.0, help_text="Section B: Practical Competence (%)")
+    weight_section_c = models.FloatField(default=20.0, help_text="Section C: Tools / Oral (%)")
     
     duration_minutes = models.IntegerField(help_text="Duration in minutes")
     pass_mark_percentage = models.FloatField(default=50.0)

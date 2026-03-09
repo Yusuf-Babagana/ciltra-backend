@@ -3,6 +3,7 @@ from django.apps import apps
 from .models import Exam, Question, Option, ExamCategory
 from payments.models import Payment
 from assessments.models import ExamSession
+from cores.models import LanguagePair
 from django.utils import timezone
 
 # --- 1. Helper Serializers ---
@@ -28,7 +29,7 @@ class QuestionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Question
         fields = [
-            'id', 'exam', 'exam_title', 'question_text', 'question_type', 
+            'id', 'exam', 'exam_title', 'question_text', 'question_type', 'status',
             'points', 'section', 'negative_points',
             'options', 'options_data'
         ]
@@ -60,15 +61,33 @@ class ExamSerializer(serializers.ModelSerializer):
     passing_score = serializers.IntegerField(source='pass_mark_percentage')
     category = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     total_questions = serializers.IntegerField(source='questions.count', read_only=True)
+    
+    # Mapping CPT fields
+    language_pair_id = serializers.PrimaryKeyRelatedField(
+        queryset=LanguagePair.objects.all(), source='language_pair', write_only=True, required=False
+    )
+    language_pair_display = serializers.CharField(source='language_pair.pair_code', read_only=True)
 
     class Meta:
         model = Exam
         fields = [
-            'id', 'title', 'description', 'category', 
+            'id', 'title', 'description', 'category', 'is_blueprint', 'blueprint',
+            'language_pair_id', 'language_pair_display',
             'duration_minutes', 'passing_score', 'grading_type',
             'price', 'is_active', 'total_questions',
-            'randomize_questions'
+            'weight_section_a', 'weight_section_b', 'weight_section_c'
         ]
+
+    def validate(self, data):
+        # CPT Rule: Section weights must sum to exactly 100%
+        # Use existing instance values as defaults if not in data
+        w_a = data.get('weight_section_a', getattr(self.instance, 'weight_section_a', 15.0) if self.instance else 15.0)
+        w_b = data.get('weight_section_b', getattr(self.instance, 'weight_section_b', 65.0) if self.instance else 65.0)
+        w_c = data.get('weight_section_c', getattr(self.instance, 'weight_section_c', 20.0) if self.instance else 20.0)
+        
+        if w_a + w_b + w_c != 100:
+            raise serializers.ValidationError("Section weights (A+B+C) must sum to exactly 100%.")
+        return data
 
     def create(self, validated_data):
         cat_name = validated_data.pop('category', None)
@@ -111,9 +130,19 @@ class ExamListSerializer(serializers.ModelSerializer):
         return Payment.objects.filter(user=request.user, exam=obj, status='success').exists()
 
 class ExamDetailSerializer(ExamSerializer):
-    questions = QuestionSerializer(many=True, read_only=True)
+    # Groups questions into sections for the CPT UI
+    sections = serializers.SerializerMethodField()
+
     class Meta(ExamSerializer.Meta):
-        fields = ExamSerializer.Meta.fields + ['questions']
+        fields = ExamSerializer.Meta.fields + ['sections']
+
+    def get_sections(self, obj):
+        questions = obj.questions.all()
+        return {
+            "section_a": QuestionSerializer(questions.filter(section="Section A"), many=True).data,
+            "section_b": QuestionSerializer(questions.filter(section="Section B"), many=True).data,
+            "section_c": QuestionSerializer(questions.filter(section="Section C"), many=True).data,
+        }
 
 # --- 4. Session & Submission Serializers ---
 
