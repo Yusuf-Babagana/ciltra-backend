@@ -59,6 +59,8 @@ class AuditLog(models.Model):
         ('GRADE', 'Grade Submitted'),
         ('CERTIFICATE', 'Certificate Issued'),
         ('SETTINGS', 'Settings Changed'),
+        ('ACTIVATE', 'User Activated'),
+        ('SUSPEND', 'User Suspended'),
     ]
 
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='audit_logs')

@@ -34,25 +34,37 @@ class UserViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAdminUser]
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], url_path='toggle-status')
     def toggle_status(self, request, pk=None):
         """
-        Custom action to suspend/activate a user.
-        POST /api/users/{id}/toggle_status/
+        Dedicated endpoint to Suspend or Activate a user.
+        Logs the specific administrative action to the AuditLog.
         """
         user = self.get_object()
+        
+        # Prevent self-suspension
+        if user == request.user:
+            return Response({"error": "You cannot suspend your own account."}, status=status.HTTP_400_BAD_REQUEST)
+
         user.is_active = not user.is_active
         user.save()
         
-        status_label = "Activated" if user.is_active else "Suspended"
+        action_type = "ACTIVATE" if user.is_active else "SUSPEND"
+        
+        # --- ENHANCED AUDIT LOG ---
         AuditLog.objects.create(
             actor=request.user,
-            action='UPDATE',
+            action=action_type,
             target_model='User',
-            target_object_id=user.id,
-            details=f"{status_label} user {user.email}"
+            target_object_id=str(user.id),
+            details=f"{action_type}: {user.email}. Status changed by Admin."
         )
-        return Response({"status": f"User {status_label}", "is_active": user.is_active})
+
+        return Response({
+            "status": "success",
+            "is_active": user.is_active,
+            "message": f"User account has been {action_type.lower()}d."
+        })
 
     def perform_create(self, serializer):
         # Hash password and log the creation

@@ -9,10 +9,16 @@ from certificates.models import Certificate
 User = get_user_model()
 
 class UserSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True, required=False)
+    
     class Meta:
         model = User
-        fields = ['id', 'email', 'first_name', 'last_name', 'role', 'is_staff', 'bio', 'avatar', 'phone_number']
-        read_only_fields = ['is_staff']
+        fields = [
+            'id', 'email', 'first_name', 'last_name', 'role', 'is_active', 
+            'date_joined', 'password', 'language_pair_competence', 
+            'direction_competence', 'specialization_competence', 'phone_number', 'bio', 'avatar'
+        ]
+        read_only_fields = ['id', 'date_joined', 'email']
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)

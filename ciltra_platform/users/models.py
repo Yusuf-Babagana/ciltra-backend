@@ -6,6 +6,7 @@ class User(AbstractUser):
         STUDENT = "student", "Student"  # Changed from CANDIDATE
         TEACHER = "teacher", "Teacher"  # Changed from EXAMINER
         ADMIN = "admin", "Admin"
+        GRADER = "grader", "Grader"
 
     # Enforce unique email for authentication
     email = models.EmailField(unique=True) 
@@ -16,6 +17,20 @@ class User(AbstractUser):
     
     bio = models.TextField(blank=True)
     avatar = models.ImageField(upload_to="avatars/", blank=True, null=True)
+
+    # --- NEW CPT COMPETENCY FIELDS ---
+    # Stores pairs like "EN-FR, FR-EN"
+    language_pair_competence = models.CharField(max_length=255, blank=True, help_text="Comma-separated language pairs")
+    
+    # Direction competence: AtoB, BtoA, or both
+    direction_competence = models.CharField(max_length=20, default="both", choices=[
+        ('AtoB', 'A → B'),
+        ('BtoA', 'B → A'),
+        ('both', 'Both Directions')
+    ])
+    
+    # Stores tracks like "Legal, Medical"
+    specialization_competence = models.CharField(max_length=255, blank=True, help_text="Comma-separated specializations")
 
     # Set email as the main field for authentication
     USERNAME_FIELD = 'email'
