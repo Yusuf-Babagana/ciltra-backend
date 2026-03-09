@@ -1,4 +1,5 @@
 import random
+from decimal import Decimal
 import json
 import logging
 import io 
@@ -76,15 +77,16 @@ class SubmitGradeView(views.APIView):
 
     def post(self, request, session_id):
         session = get_object_or_404(ExamSession, id=session_id)
-        
+        exam = session.exam
         grades = request.data.get('grades', []) 
-        
+
+        # 1. Update individual answers with grader input
         for grade in grades:
             answer = get_object_or_404(StudentAnswer, session=session, question_id=grade['question_id'])
             
+            # Validation: Ensure awarded marks don't exceed max points for the question
             max_points = answer.question.points
-            awarded = float(grade['marks'])
-            
+            awarded = Decimal(str(grade['marks']))
             if awarded > max_points:
                 return Response(
                     {"error": f"Cannot award {awarded} marks for Q{answer.question.id}. Max is {max_points}."}, 
@@ -95,42 +97,70 @@ class SubmitGradeView(views.APIView):
             answer.grader_comment = grade.get('comment', '')
             answer.save()
 
-        # RE-CALCULATE TOTAL SCORE
-        total_possible = session.exam.questions.aggregate(total=Sum('points'))['total'] or 0
-        total_earned = StudentAnswer.objects.filter(session=session).aggregate(total=Sum('awarded_marks'))['total'] or 0
+        # 2. CALCULATE SECTIONAL WEIGHTED SCORES
+        sections = ["Section A", "Section B", "Section C"]
+        sectional_results = {}
 
-        # --- FIX: Cast to float to avoid Decimal vs Float error ---
-        if total_possible > 0:
-            final_percentage = (float(total_earned) / float(total_possible)) * 100
-        else:
-            final_percentage = 0
-
-        session.score = final_percentage
-        session.is_graded = True 
-        
-        pass_mark = getattr(session.exam, 'passing_score', getattr(session.exam, 'pass_mark_percentage', 50))
-        
-        if session.score >= pass_mark:
-            session.passed = True
-            Certificate.objects.get_or_create(session=session)
-        else:
-            session.passed = False
+        for sec in sections:
+            # Get all questions in this specific CPT section
+            q_in_sec = exam.questions.filter(section=sec)
+            total_possible = q_in_sec.aggregate(total=Sum('points'))['total'] or Decimal('0.00')
             
-        session.save()
+            # Get marks awarded to the student in this section
+            total_earned = StudentAnswer.objects.filter(
+                session=session, 
+                question__section=sec
+            ).aggregate(total=Sum('awarded_marks'))['total'] or Decimal('0.00')
+
+            # Calculate raw percentage for this section (0-100)
+            raw_percent = (total_earned / total_possible * 100) if total_possible > 0 else Decimal('0.00')
+            sectional_results[sec] = raw_percent
+
+        # 3. APPLY BLUEPRINT WEIGHTS
+        # Mapping DB fields to Section Names (weights stored as 15.0 etc, convert to 0.15)
+        w_a = Decimal(str(exam.weight_section_a)) / 100
+        w_b = Decimal(str(exam.weight_section_b)) / 100
+        w_c = Decimal(str(exam.weight_section_c)) / 100
+
+        final_weighted_score = (
+            (sectional_results["Section A"] * w_a) +
+            (sectional_results["Section B"] * w_b) +
+            (sectional_results["Section C"] * w_c)
+        )
+
+        # 4. PERSIST CPT TRANSCRIPT DATA
+        session.score_section_a = sectional_results["Section A"]
+        session.score_section_b = sectional_results["Section B"]
+        session.score_section_c = sectional_results["Section C"]
+        session.score = final_weighted_score
+        session.is_graded = True
         
-        # --- AUDIT LOG ---
+        # Pass mark check
+        pass_mark = getattr(exam, 'passing_score', getattr(exam, 'pass_mark_percentage', 50))
+        session.passed = session.score >= pass_mark
+        session.save()
+
+        # Generate certificate if passed
+        if session.passed:
+            Certificate.objects.get_or_create(session=session)
+
+        # Audit Log
         AuditLog.objects.create(
             actor=request.user,
             action='GRADE',
             target_model='ExamSession',
             target_object_id=str(session.id),
-            details=f"Graded session #{session.id}. Final Score: {session.score}%"
+            details=f"Graded session #{session.id}. Final Weighted Score: {session.score}%"
         )
-        
+
         return Response({
-            "status": "Graded successfully", 
-            "final_score": session.score,
-            "passed": session.passed
+            "status": "Graded successfully",
+            "final_weighted_score": session.score,
+            "breakdown": {
+                "Section A (Knowledge)": f"{session.score_section_a}%",
+                "Section B (Competence)": f"{session.score_section_b}%",
+                "Section C (Tools)": f"{session.score_section_c}%"
+            }
         })
 
 
