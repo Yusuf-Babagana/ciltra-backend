@@ -4,8 +4,9 @@ from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
-from .models import Exam, Question, Option, ExamCategory
+from .models import Exam, Question, Option, ExamCategory, ExaminerAssignment
 from assessments.models import ExamSession, StudentAnswer
+from cores.models import AuditLog
 from .serializers import (
     ExamSerializer, ExamDetailSerializer, ExamListSerializer,
     QuestionSerializer, ExamCategorySerializer, OptionSerializer,
@@ -108,6 +109,39 @@ class ExamViewSet(viewsets.ModelViewSet):
         question_ids = request.data.get('question_ids', [])
         Question.objects.filter(id__in=question_ids, exam=self.get_object()).update(exam=None)
         return Response({"status": "Questions returned to bank"})
+
+    @action(detail=True, methods=['post'], url_path='assign-examiner')
+    def assign_examiner(self, request, pk=None):
+        """
+        Assigns an examiner to a specific exam instance with a role 
+        and conflict-of-interest declaration.
+        """
+        exam = self.get_object()
+        user_id = request.data.get('user_id')
+        role = request.data.get('role', 'content')
+        no_conflict = request.data.get('has_declared_no_conflict', False)
+
+        if not user_id:
+            return Response({"error": "User ID is required"}, status=400)
+
+        assignment, created = ExaminerAssignment.objects.update_or_create(
+            exam=exam,
+            user_id=user_id,
+            defaults={
+                'role': role,
+                'has_declared_no_conflict': no_conflict
+            }
+        )
+
+        AuditLog.objects.create(
+            actor=request.user,
+            action='UPDATE',
+            target_model='Exam',
+            target_object_id=str(exam.id),
+            details=f"Assigned {assignment.user.email} as {role} to {exam.title}"
+        )
+
+        return Response({"status": "Examiner assigned successfully"})
 
 # ... (QuestionViewSet and CategoryViewSet remain unchanged) ...
 class QuestionViewSet(viewsets.ModelViewSet):
@@ -231,6 +265,46 @@ class QuestionViewSet(viewsets.ModelViewSet):
 
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'])
+    def approve(self, request, pk=None):
+        """
+        Transitions a question to APPROVED status and records the approver.
+        """
+        question = self.get_object()
+        
+        # Ensure the user is an assigned examiner for this exam or an admin
+        is_assigned = ExaminerAssignment.objects.filter(exam=question.exam, user=request.user).exists()
+        if not (request.user.is_staff or is_assigned):
+            return Response({"error": "You are not authorized to approve content for this exam."}, status=403)
+
+        question.status = 'approved'
+        question.approved_by = request.user
+        question.save()
+
+        AuditLog.objects.create(
+            actor=request.user,
+            action='UPDATE',
+            target_model='Question',
+            target_object_id=str(question.id),
+            details=f"Approved question ID {question.id} for {question.exam.title}"
+        )
+
+        return Response({"status": "Question approved"})
+
+    @action(detail=True, methods=['post'])
+    def lock(self, request, pk=None):
+        """
+        Locks a question to prevent further edits before the exam goes live.
+        """
+        question = self.get_object()
+        if not request.user.is_staff:
+             return Response({"error": "Only administrators can lock content."}, status=403)
+
+        question.status = 'locked'
+        question.save()
+
+        return Response({"status": "Question locked and ready for exam sitting."})
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
