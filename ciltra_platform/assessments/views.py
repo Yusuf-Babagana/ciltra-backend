@@ -3,6 +3,11 @@ from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.contrib.auth import get_user_model
+from django.http import FileResponse
+import io
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
 
 from .models import ExamSession, StudentAnswer
 from .serializers import (
@@ -275,3 +280,98 @@ class ExamSessionDetailView(generics.RetrieveAPIView):
 
     def get_object(self):
         return get_object_or_404(ExamSession, id=self.kwargs['pk'], user=self.request.user)
+
+
+class DownloadResultView(views.APIView):
+    """
+    CPT-Integrated: Generates a PDF Transcript with sectional breakdowns (A, B, and C).
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, session_id):
+        session = get_object_or_404(ExamSession, id=session_id)
+        
+        # Security: Only owner or staff can download
+        if not request.user.is_staff and session.user != request.user:
+             return Response({"error": "Unauthorized"}, status=403)
+
+        if not session.is_graded:
+             return Response({"error": "Result not yet finalized by Examiner"}, status=400)
+
+        buffer = io.BytesIO()
+        p = canvas.Canvas(buffer, pagesize=letter)
+        width, height = letter
+
+        # --- Header Section ---
+        p.setFont("Helvetica-Bold", 18)
+        p.drawCentredString(width/2, height - 60, "OFFICIAL CPT EXAMINATION TRANSCRIPT")
+        p.setFont("Helvetica", 10)
+        p.drawCentredString(width/2, height - 75, f"Session ID: #CPT-{session.id:06d}")
+        p.line(50, height - 85, width - 50, height - 85)
+
+        # --- Candidate & Exam Info ---
+        p.setFont("Helvetica-Bold", 12)
+        p.drawString(70, height - 120, "CANDIDATE DETAILS")
+        p.setFont("Helvetica", 11)
+        p.drawString(70, height - 140, f"Name: {session.user.first_name} {session.user.last_name}")
+        p.drawString(70, height - 140, f"Email: {session.user.email}")
+        p.drawString(320, height - 140, f"Exam: {session.exam.title}")
+        # session.end_time should be available since it's graded
+        exam_date = session.end_time.strftime('%d %B %Y') if session.end_time else "N/A"
+        p.drawString(320, height - 155, f"Date: {exam_date}")
+
+        # --- CPT SECTIONAL BREAKDOWN TABLE ---
+        p.setFont("Helvetica-Bold", 12)
+        p.drawString(70, height - 200, "COMPETENCY BREAKDOWN")
+        
+        # Table Headers
+        y = height - 225
+        p.setFont("Helvetica-Bold", 10)
+        p.drawString(70, y, "Section")
+        p.drawString(250, y, "Competency Area")
+        p.drawString(450, y, "Score")
+        p.line(70, y-5, width-70, y-5)
+
+        # Table Rows
+        p.setFont("Helvetica", 10)
+        y -= 25
+        # Section A
+        p.drawString(70, y, "Section A (15%)")
+        p.drawString(250, y, "Core Knowledge & Ethics")
+        p.drawString(450, y, f"{session.score_section_a}%")
+        # Section B
+        y -= 20
+        p.drawString(70, y, "Section B (65%)")
+        p.drawString(250, y, "Practical Translation Tasks")
+        p.drawString(450, y, f"{session.score_section_b}%")
+        # Section C
+        y -= 20
+        p.drawString(70, y, "Section C (20%)")
+        p.drawString(250, y, "Professional Conduct / CAT Tools")
+        p.drawString(450, y, f"{session.score_section_c}%")
+        
+        p.line(70, y-10, width-70, y-10)
+
+        # --- FINAL WEIGHTED TOTAL ---
+        y -= 40
+        p.setFont("Helvetica-Bold", 14)
+        status_text = "PASSED" if session.passed else "FAILED"
+        p.drawString(70, y, f"FINAL WEIGHTED SCORE: {session.score}%")
+        
+        # Highlight Status
+        if session.passed:
+            p.setFillColor(colors.green)
+        else:
+            p.setFillColor(colors.red)
+        p.drawRightString(width - 70, y, f"STATUS: {status_text}")
+        p.setFillColor(colors.black)
+
+        # --- Footer ---
+        p.setFont("Helvetica-Oblique", 8)
+        p.drawCentredString(width/2, 40, "CILTRA CertifyPro Integrated Grading System - Verification Link: ciltra.org/verify")
+
+        p.showPage()
+        p.save()
+        
+        buffer.seek(0)
+        return FileResponse(buffer, as_attachment=True, filename=f"CPT_Transcript_{session.id}.pdf")

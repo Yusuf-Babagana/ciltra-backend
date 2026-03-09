@@ -1,5 +1,8 @@
 from django.urls import path
-from .views import PendingGradingListView, SubmitGradeView, StartExamView, SubmitExamView, ExamSessionDetailView
+from .views import (
+    PendingGradingListView, SubmitGradeView, StartExamView, 
+    SubmitExamView, ExamSessionDetailView, DownloadResultView
+)
 
 urlpatterns = [
     # --- Grading Module (Admin) ---
@@ -12,5 +15,6 @@ urlpatterns = [
 
 
     path('api/exams/session/<int:pk>/', ExamSessionDetailView.as_view(), name='session_detail'),
+    path('api/exams/session/<int:session_id>/download/', DownloadResultView.as_view(), name='download_result'),
 
 ]

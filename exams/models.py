@@ -85,7 +85,7 @@ class ExaminerAssignment(models.Model):
 class Question(models.Model):
     class QuestionType(models.TextChoices):
         MCQ = 'MCQ', 'Multiple Choice'
-        THEORY = 'THEORY', 'Theory / Essay'
+        THEORY = 'THEORY', 'Theory / Translation' # Updated label
 
     class ApprovalStatus(models.TextChoices):
         DRAFT = 'draft', 'Draft'
@@ -110,7 +110,19 @@ class Question(models.Model):
         related_name='approved_questions'
     )
     
+    # The main prompt or question text
     text = models.TextField()
+
+    # --- CPT TRANSLATION EXTENSIONS ---
+    # For Section B: The actual text to be translated
+    source_text = models.TextField(blank=True, null=True, help_text="Original text for translation tasks")
+    
+    # For Grading: The model answer (hidden from candidates)
+    reference_translation = models.TextField(blank=True, null=True, help_text="Reference translation for graders")
+    
+    # Guidelines (e.g., 'Do not translate proper nouns')
+    translation_brief = models.TextField(blank=True, null=True)
+
     question_type = models.CharField(
         max_length=10, 
         choices=QuestionType.choices, 
@@ -119,7 +131,7 @@ class Question(models.Model):
     points = models.FloatField(default=1.0)
 
     def __str__(self):
-        return f"[{self.status}] {self.exam.title} - {self.text[:50]}"
+        return f"[{self.section}] {self.exam.title} - {self.text[:30]}"
 
 class Option(models.Model):
     question = models.ForeignKey(Question, related_name='options', on_delete=models.CASCADE)
