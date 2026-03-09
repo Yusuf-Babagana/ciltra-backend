@@ -8,6 +8,7 @@ from django.contrib.auth import get_user_model
 from exams.models import Exam
 from assessments.models import ExamSession
 from certificates.models import Certificate
+from cores.models import AuditLog
 
 from .serializers import (
     RegisterSerializer, 
@@ -21,25 +22,48 @@ User = get_user_model()
 # --- 1. User Management (CRUD for Admin) ---
 class UserViewSet(viewsets.ModelViewSet):
     """
-    Admin-only endpoint to manage all users (Students, Teachers, Admins).
+    Provides standard CRUD for users:
+    GET /api/users/ - List users
+    POST /api/users/ - Create user
+    GET /api/users/{id}/ - Retrieve user
+    PATCH /api/users/{id}/ - Update role or competencies
+    DELETE /api/users/{id}/ - Remove user
     """
     queryset = User.objects.all().order_by('-date_joined')
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAdminUser]
 
     def perform_create(self, serializer):
-        # Hash password when Admin creates a user manually
+        # Hash password and log the creation
         user = serializer.save()
-        if 'password' in self.request.data:
-            user.set_password(self.request.data['password'])
+        password = self.request.data.get('password')
+        if password:
+            user.set_password(password)
             user.save()
+        
+        AuditLog.objects.create(
+            actor=self.request.user,
+            action='CREATE',
+            target_model='User',
+            target_object_id=user.id,
+            details=f"Created user {user.email} with role {user.role}"
+        )
 
     def perform_update(self, serializer):
-        # Hash password if it is being updated
+        # Log updates to roles or competencies
         user = serializer.save()
-        if 'password' in self.request.data and self.request.data['password']:
-            user.set_password(self.request.data['password'])
+        password = self.request.data.get('password')
+        if password:
+            user.set_password(password)
             user.save()
+
+        AuditLog.objects.create(
+            actor=self.request.user,
+            action='UPDATE',
+            target_model='User',
+            target_object_id=user.id,
+            details=f"Updated user {user.email}"
+        )
 
 # --- 2. Authentication Views ---
 class RegisterView(generics.CreateAPIView):

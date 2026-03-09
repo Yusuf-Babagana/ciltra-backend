@@ -11,7 +11,7 @@ User = get_user_model()
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'email', 'first_name', 'last_name', 'role', 'is_staff', 'bio', 'avatar']
+        fields = ['id', 'email', 'first_name', 'last_name', 'role', 'is_staff', 'bio', 'avatar', 'phone_number']
         read_only_fields = ['is_staff']
 
 class RegisterSerializer(serializers.ModelSerializer):
