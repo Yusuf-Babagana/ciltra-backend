@@ -1,6 +1,7 @@
 from rest_framework import generics, permissions, status, viewsets
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.decorators import action
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth import get_user_model
 
@@ -32,6 +33,26 @@ class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().order_by('-date_joined')
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAdminUser]
+
+    @action(detail=True, methods=['post'])
+    def toggle_status(self, request, pk=None):
+        """
+        Custom action to suspend/activate a user.
+        POST /api/users/{id}/toggle_status/
+        """
+        user = self.get_object()
+        user.is_active = not user.is_active
+        user.save()
+        
+        status_label = "Activated" if user.is_active else "Suspended"
+        AuditLog.objects.create(
+            actor=request.user,
+            action='UPDATE',
+            target_model='User',
+            target_object_id=user.id,
+            details=f"{status_label} user {user.email}"
+        )
+        return Response({"status": f"User {status_label}", "is_active": user.is_active})
 
     def perform_create(self, serializer):
         # Hash password and log the creation
