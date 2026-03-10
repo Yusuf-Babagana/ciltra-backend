@@ -1,4 +1,5 @@
 from django.urls import path
+from . import views
 from .views import (
     PendingGradingListView, SubmitGradeView, StartExamView,
     SubmitExamView, ExamSessionDetailView, DownloadResultView,
@@ -20,4 +21,6 @@ urlpatterns = [
     path('api/exams/session/<int:session_id>/download/', DownloadResultView.as_view(), name='download_result'),
     path('api/exams/session/<int:session_id>/heartbeat/', HeartbeatSaveView.as_view(), name='heartbeat_save'),
     path('examiner/queue/', ExaminerQueueView.as_view(), name='examiner_queue'), # Added new path
+    path('results/export/', views.export_results_csv, name='export_results_csv'),
+    path('results/upload/', views.upload_results_csv, name='upload_results_csv'),
 ]

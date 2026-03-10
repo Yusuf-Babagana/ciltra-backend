@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -135,6 +136,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'  # This tells Django where to dump files for Nginx
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -149,6 +151,7 @@ AUTH_USER_MODEL = 'users.User'
 # Add this at the bottom of settings.py
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
+    "https://cpt-cpt.ciltra.org",  # Add your live frontend domain here
 ]
 
 # Optional: If you want to allow cookies/sessions cross-origin

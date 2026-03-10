@@ -85,3 +85,22 @@ class IntegrityLog(models.Model):
 
     def __str__(self):
         return f"{self.event_type} - {self.session.user.email}"
+
+
+class Result(models.Model):
+    """
+    Stores finalized CPT scores (15/65/20) for a candidate.
+    """
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='result')
+    ca_score = models.FloatField(default=0.0, help_text="15% weight")
+    exam_score = models.FloatField(default=0.0, help_text="65% weight")
+    practical_score = models.FloatField(default=0.0, help_text="20% weight")
+    is_finalized = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Result: {self.user.email} - {self.total_score}%"
+
+    @property
+    def total_score(self):
+        return round(self.ca_score + self.exam_score + self.practical_score, 2)

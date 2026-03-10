@@ -3,13 +3,15 @@ from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.contrib.auth import get_user_model
-from django.http import FileResponse
+from django.http import FileResponse, HttpResponse
 import io
+import csv
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 
-from .models import ExamSession, StudentAnswer
+from rest_framework.decorators import api_view
+from .models import ExamSession, StudentAnswer, IntegrityLog, Result
 from .serializers import (
     ExamSessionSerializer, 
     StudentAnswerSerializer, 
@@ -443,3 +445,53 @@ class ExaminerQueueView(generics.ListAPIView):
             end_time__isnull=False,
             is_graded=False
         ).order_by('end_time')
+
+
+@api_view(['GET'])
+def export_results_csv(request):
+    """
+    CPT-Integrated: Exports a CSV template/data for bulk scoring (15/65/20).
+    """
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = 'attachment; filename="cpt_grading_template.csv"'
+    
+    writer = csv.writer(response)
+    # Header matching the 15/65/20 requirements
+    writer.writerow(['candidate_email', 'ca_score_15', 'exam_score_65', 'practical_score_20'])
+    
+    # Pre-fill with existing results
+    results = Result.objects.all()
+    for res in results:
+        writer.writerow([res.user.email, res.ca_score, res.exam_score, res.practical_score])
+        
+    return response
+
+
+@api_view(['POST'])
+def upload_results_csv(request):
+    """
+    CPT-Integrated: Bulk updates candidate scores via CSV upload.
+    """
+    csv_file = request.FILES.get('file')
+    if not csv_file:
+        return Response({"error": "No file uploaded"}, status=400)
+
+    try:
+        decoded_file = csv_file.read().decode('utf-8').splitlines()
+        reader = csv.DictReader(decoded_file)
+        
+        updated_count = 0
+        for row in reader:
+            Result.objects.update_or_create(
+                user__email=row['candidate_email'],
+                defaults={
+                    'ca_score': row.get('ca_score_15', 0),
+                    'exam_score': row.get('exam_score_65', 0),
+                    'practical_score': row.get('practical_score_20', 0),
+                }
+            )
+            updated_count += 1
+            
+        return Response({"message": f"Scores for {updated_count} candidates updated successfully!"})
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
