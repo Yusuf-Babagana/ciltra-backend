@@ -1,9 +1,12 @@
 from rest_framework import generics, permissions, status, viewsets
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.decorators import action
-from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth import get_user_model
+from django.utils.crypto import get_random_string
+import csv
+import string
+import random
+from rest_framework.decorators import action, api_view
 
 # Import models from other apps
 from exams.models import Exam
@@ -132,3 +135,61 @@ class StudentListView(generics.ListAPIView):
     def get_queryset(self):
         # Filter for users with role 'student'
         return User.objects.filter(role='student').order_by('-date_joined')
+
+
+@api_view(['POST'])
+def bulk_register_students(request):
+    """
+    CPT-Integrated: Bulk registers students via CSV upload.
+    Generates random passwords and assigns 'student' role.
+    """
+    csv_file = request.FILES.get('file')
+    if not csv_file:
+        return Response({"error": "No file uploaded"}, status=400)
+
+    try:
+        decoded_file = csv_file.read().decode('utf-8').splitlines()
+        reader = csv.DictReader(decoded_file)
+        
+        created_count = 0
+        errors = []
+
+        for row in reader:
+            email = row.get('email', '').strip()
+            full_name = row.get('full_name', '').strip()
+            
+            if not email:
+                continue
+
+            if User.objects.filter(email=email).exists():
+                errors.append(f"Email {email} already exists.")
+                continue
+
+            # Generate a random 8-character password
+            temp_password = get_random_string(8)
+            
+            try:
+                # Note: first_name and last_name split logic
+                name_parts = full_name.split(' ')
+                first_name = name_parts[0] if name_parts else ""
+                last_name = ' '.join(name_parts[1:]) if len(name_parts) > 1 else ""
+
+                user = User.objects.create_user(
+                    username=email, # Using email as username for simplicity
+                    email=email,
+                    password=temp_password,
+                    first_name=first_name,
+                    last_name=last_name,
+                    role='student' # Fixed to 'student' to match existing role
+                )
+                created_count += 1
+            except Exception as e:
+                errors.append(f"Error creating {email}: {str(e)}")
+
+        return Response({
+            "status": "success",
+            "message": f"Successfully registered {created_count} students.",
+            "skipped": errors
+        })
+    except Exception as e:
+        return Response({"error": f"Failed to process CSV: {str(e)}"}, status=500)

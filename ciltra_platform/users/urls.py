@@ -4,8 +4,9 @@ from .views import (
     RegisterView, 
     CustomLoginView, 
     AdminStatsView, 
-    CandidateListView, 
-    UserViewSet
+    StudentListView, # Was CandidateListView
+    UserViewSet,
+    bulk_register_students
 )
 
 # Create a router for ViewSets
@@ -19,7 +20,8 @@ urlpatterns = [
 
     # --- Admin Dashboard ---
     path('admin/stats/', AdminStatsView.as_view(), name='admin-stats'),
-    path('admin/candidates/', CandidateListView.as_view(), name='admin-candidates'),
+    path('admin/students/', StudentListView.as_view(), name='admin-students'),
+    path('admin/bulk-register/', bulk_register_students, name='bulk-register'),
 
     # --- User Management (CRUD) ---
     path('', include(router.urls)),
