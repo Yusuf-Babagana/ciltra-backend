@@ -98,26 +98,74 @@ class QuestionViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'], url_path='bulk-upload')
     def bulk_upload(self, request):
+        """
+        CPT-Integrated: Bulk uploads questions (MCQ or Theory) with full metadata support.
+        Expects a CSV file with headers: section, question_text, question_type, points, 
+        difficulty, category, source_text, reference_translation, translation_brief, 
+        specialization, options (semicolon separated), correct_answer.
+        """
         file_obj = request.FILES.get('file')
-        if not file_obj: return Response({"error": "No file"}, status=400)
+        if not file_obj:
+            return Response({"error": "No CSV file uploaded."}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
             decoded_file = file_obj.read().decode('utf-8')
             reader = csv.DictReader(io.StringIO(decoded_file))
-            count = 0
-            for row in reader:
-                q = Question.objects.create(
-                    text=row['question_text'], 
-                    question_type=row.get('question_type','mcq').lower(),
-                    points=int(row.get('points', 1))
-                )
-                if q.question_type == 'mcq':
-                    correct = row.get('correct_answer','').strip().lower()
-                    for opt in row.get('options','').split('|'):
-                        Option.objects.create(question=q, text=opt.strip(), is_correct=(opt.strip().lower()==correct))
-                count += 1
-            return Response({"status": f"Uploaded {count} questions"})
+            
+            created_count = 0
+            errors = []
+            
+            for row_idx, row in enumerate(reader, start=1):
+                try:
+                    # Basic field extraction
+                    question_text = row.get('question_text', '').strip()
+                    if not question_text:
+                        continue # Skip empty rows
+
+                    q_type = row.get('question_type', 'mcq').lower()
+                    
+                    # Create the Question record
+                    question = Question.objects.create(
+                        text=question_text,
+                        question_type=q_type,
+                        section=row.get('section', 'Section A').strip(),
+                        points=float(row.get('points', 1.0)),
+                        difficulty=row.get('difficulty', 'medium').lower(),
+                        category=row.get('category', '').strip(),
+                        source_text=row.get('source_text', '').strip() or None,
+                        reference_translation=row.get('reference_translation', '').strip() or None,
+                        translation_brief=row.get('translation_brief', '').strip() or None,
+                        specialization=row.get('specialization', '').strip() or None,
+                        correct_answer=row.get('correct_answer', '').strip()
+                    )
+
+                    # Handle MCQ options
+                    if q_type == 'mcq':
+                        options_str = row.get('options', '')
+                        correct_text = row.get('correct_answer', '').strip()
+                        
+                        if options_str:
+                            options_list = [o.strip() for o in options_str.split(';') if o.strip()]
+                            for opt_text in options_list:
+                                Option.objects.create(
+                                    question=question,
+                                    text=opt_text,
+                                    is_correct=(opt_text == correct_text)
+                                )
+                    
+                    created_count += 1
+
+                except Exception as e:
+                    errors.append(f"Row {row_idx}: {str(e)}")
+
+            return Response({
+                "status": "success",
+                "message": f"Successfully uploaded {created_count} questions.",
+                "errors": errors
+            })
+
         except Exception as e:
-            return Response({"error": str(e)}, status=400)
+            return Response({"error": f"Failed to process CSV: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = ExamCategory.objects.all()
