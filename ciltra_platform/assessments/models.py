@@ -69,3 +69,19 @@ class StudentAnswer(models.Model):
 
     class Meta:
         unique_together = ('session', 'question')
+
+
+class IntegrityLog(models.Model):
+    EVENT_TYPES = [
+        ('TAB_SWITCH', 'Tab Switch / Navigation'),
+        ('PASTE_ATTEMPT', 'Paste Detected'),
+        ('RE_ENTRY', 'Session Re-entry'),
+    ]
+    
+    session = models.ForeignKey(ExamSession, related_name='integrity_logs', on_delete=models.CASCADE)
+    event_type = models.CharField(max_length=20, choices=EVENT_TYPES)
+    details = models.TextField()
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.event_type} - {self.session.user.email}"

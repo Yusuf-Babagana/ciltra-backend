@@ -50,9 +50,9 @@ class Exam(models.Model):
     )
 
     # CPT Section Weights (should total 100%)
-    weight_section_a = models.FloatField(default=15.0, help_text="Section A: Core Knowledge (%)")
-    weight_section_b = models.FloatField(default=65.0, help_text="Section B: Practical Competence (%)")
-    weight_section_c = models.FloatField(default=20.0, help_text="Section C: Tools / Oral (%)")
+    weight_section_a = models.IntegerField(default=15, help_text="Section A: Core Knowledge (%)")
+    weight_section_b = models.IntegerField(default=65, help_text="Section B: Practical Competence (%)")
+    weight_section_c = models.IntegerField(default=20, help_text="Section C: Tools / Oral (%)")
 
     # --- CPT ASSIGNMENT EXTENSIONS ---
     assigned_examiners = models.ManyToManyField(

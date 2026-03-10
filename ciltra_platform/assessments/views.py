@@ -422,3 +422,24 @@ class HeartbeatSaveView(views.APIView):
             "status": "synced", 
             "timestamp": timezone.now()
         })
+
+class ExaminerQueueView(generics.ListAPIView):
+    """
+    Returns submitted exam sessions assigned to the logged-in examiner that need manual grading.
+    """
+    permission_classes = [IsGraderOrAdmin]
+    serializer_class = ExamSessionSerializer
+
+    def get_queryset(self):
+        # 1. Get exams assigned to this specific user
+        assigned_exam_ids = ExaminerAssignment.objects.filter(
+            user=self.request.user,
+            has_declared_no_conflict=True
+        ).values_list('exam_id', flat=True)
+
+        # 2. Return submitted sessions for those exams that are not yet graded
+        return ExamSession.objects.filter(
+            exam_id__in=assigned_exam_ids,
+            end_time__isnull=False,
+            is_graded=False
+        ).order_by('end_time')

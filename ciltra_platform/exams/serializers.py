@@ -31,7 +31,18 @@ class ExamListSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Exam
-        fields = ['id', 'title', 'description', 'category_name', 'duration_minutes', 'price', 'is_active', 'created_at']
+        fields = [
+            'id', 
+            'title', 
+            'description', 
+            'category_name', 
+            'duration_minutes', 
+            'weight_section_a', 
+            'weight_section_b', 
+            'weight_section_c',
+            'is_active', 
+            'created_at'
+        ]
 
 class ExamSerializer(serializers.ModelSerializer):
     """Standard serializer for Admin CRUD — includes all CPT architecture fields."""
@@ -42,9 +53,9 @@ class ExamSerializer(serializers.ModelSerializer):
     is_blueprint = serializers.BooleanField(default=False)
 
     # Section weights
-    weight_section_a = serializers.FloatField(default=15.0)
-    weight_section_b = serializers.FloatField(default=65.0)
-    weight_section_c = serializers.FloatField(default=20.0)
+    weight_section_a = serializers.IntegerField(default=15)
+    weight_section_b = serializers.IntegerField(default=65)
+    weight_section_c = serializers.IntegerField(default=20)
 
     class Meta:
         model = Exam
