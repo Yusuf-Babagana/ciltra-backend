@@ -32,16 +32,9 @@ class ExamListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Exam
         fields = [
-            'id', 
-            'title', 
-            'description', 
-            'category_name', 
-            'duration_minutes', 
-            'weight_section_a', 
-            'weight_section_b', 
-            'weight_section_c',
-            'is_active', 
-            'created_at'
+            'id', 'title', 'description', 'category', 'category_name', 
+            'duration_minutes', 'pass_mark_percentage', 'is_active',
+            'weight_section_a', 'weight_section_b', 'weight_section_c'
         ]
 
 class ExamSerializer(serializers.ModelSerializer):
@@ -63,7 +56,7 @@ class ExamSerializer(serializers.ModelSerializer):
             'id', 'title', 'description', 'category',
             'is_blueprint', 'blueprint',
             'language_pair', 'language_pair_data', 'allowed_directions',
-            'duration_minutes', 'pass_mark_percentage', 'price', 'currency',
+            'duration_minutes', 'pass_mark_percentage',
             'weight_section_a', 'weight_section_b', 'weight_section_c',
             'is_active', 'created_at',
         ]
@@ -75,7 +68,7 @@ class ExamDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Exam
-        fields = ['id', 'title', 'description', 'category', 'category_name', 'duration_minutes', 'pass_mark_percentage', 'price', 'is_active', 'questions']
+        fields = ['id', 'title', 'description', 'category', 'category_name', 'duration_minutes', 'pass_mark_percentage', 'is_active', 'questions']
 
 
         

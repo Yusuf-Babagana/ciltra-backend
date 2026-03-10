@@ -16,9 +16,6 @@ class Exam(models.Model):
     # Make category optional or handle string in serializer
     category = models.ForeignKey(ExamCategory, on_delete=models.SET_NULL, null=True, related_name='exams')
     description = models.TextField()
-    price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    currency = models.CharField(max_length=3, default="NGN")
-
     duration_minutes = models.PositiveIntegerField()
     pass_mark_percentage = models.PositiveIntegerField(default=50)
 
