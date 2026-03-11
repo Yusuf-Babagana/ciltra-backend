@@ -144,66 +144,12 @@ class ExamViewSet(viewsets.ModelViewSet):
 
         return Response({"status": "Examiner assigned successfully"})
 
-# ... (QuestionViewSet and CategoryViewSet remain unchanged) ...
 class QuestionViewSet(viewsets.ModelViewSet):
     queryset = Question.objects.all().order_by('-id')
     serializer_class = QuestionSerializer
     authentication_classes = [JWTAuthentication]  # Explicit JWT for Next.js frontend
     permission_classes = [permissions.IsAdminUser]
-    filter_backends = [filters.SearchFilter]
-    search_fields = ['text', 'category']
-    parser_classes = (MultiPartParser, FormParser, JSONParser)
 
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        exam_id = self.request.query_params.get('exam_id')
-        if exam_id:
-            queryset = queryset.filter(exam_id=exam_id)
-        return queryset
-
-    @action(detail=False, methods=['post'], url_path='bulk-upload')
-    def bulk_upload(self, request):
-        file_obj = request.FILES.get('file')
-        if not file_obj:
-            return Response({"error": "No file uploaded"}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            decoded_file = file_obj.read().decode('utf-8')
-            io_string = io.StringIO(decoded_file)
-            reader = csv.DictReader(io_string)
-            created_count = 0
-            for row in reader:
-                question = Question.objects.create(
-                    text=row['question_text'],
-                    question_type=row.get('question_type', 'mcq').lower(),
-                    category=row.get('category', 'General'),
-                    difficulty=row.get('difficulty', 'medium').lower(),
-                    points=int(row.get('points', 1)) 
-                )
-                if question.question_type == 'mcq':
-                    raw_options = row.get('options', '').split('|')
-                    correct_ans_text = row.get('correct_answer', '').strip().lower()
-                    for opt_text in raw_options:
-                        clean_text = opt_text.strip()
-                        if clean_text:
-                            is_correct = (clean_text.lower() == correct_ans_text)
-                            Option.objects.create(question=question, text=clean_text, is_correct=is_correct)
-                created_count += 1
-            return Response({"status": f"Successfully uploaded {created_count} questions"}, status=status.HTTP_201_CREATED)
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-class CategoryViewSet(viewsets.ModelViewSet):
-    queryset = ExamCategory.objects.all()
-    serializer_class = ExamCategorySerializer
-    permission_classes = [permissions.IsAdminUser]
-
-    
-
-class QuestionViewSet(viewsets.ModelViewSet):
-    queryset = Question.objects.all().order_by('-id')
-    serializer_class = QuestionSerializer
-    permission_classes = [permissions.IsAdminUser]
-    
     # Enable Search and Filtering for the Question Bank
     filter_backends = [filters.SearchFilter]
     search_fields = ['text', 'category']
