@@ -1,4 +1,5 @@
 from rest_framework import generics, permissions, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -24,10 +25,67 @@ User = get_user_model()
 class UserViewSet(viewsets.ModelViewSet):
     """
     Admin-only endpoint to manage all users.
-    Now includes AUDIT LOGGING.
+    Now includes AUDIT LOGGING, Soft Delete, and Suspension.
     """
-    queryset = User.objects.all().order_by('-date_joined')
+    serializer_class = UserSerializer
     permission_classes = [permissions.IsAdminUser]
+
+    def get_queryset(self):
+        """
+        CPT-Integrated: Supports fetching trashed (deactivated) users via ?trashed=true.
+        """
+        show_trashed = self.request.query_params.get('trashed', 'false') == 'true'
+        if show_trashed:
+            return User.objects.filter(is_active=False).order_by('-date_joined')
+        return User.objects.filter(is_active=True).order_by('-date_joined')
+
+    @action(detail=True, methods=['post'], url_path='restore')
+    def restore(self, request, pk=None):
+        """
+        CPT-Integrated: Restores a deactivated user account.
+        """
+        user = self.get_object()
+        user.is_active = True
+        user.save()
+
+        AuditLog.objects.create(
+            actor=request.user,
+            action='RESTORE',
+            target_model='User',
+            target_object_id=str(user.id),
+            details=f"Restored user account: {user.email}"
+        )
+        return Response({"message": "User restored successfully"}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='toggle-status')
+    def toggle_status(self, request, pk=None):
+        """
+        Dedicated endpoint to Suspend or Activate a user.
+        """
+        user = self.get_object()
+        
+        # Prevent self-suspension
+        if user == request.user:
+            return Response({"error": "You cannot suspend your own account."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.is_active = not user.is_active
+        user.save()
+        
+        action_type = "ACTIVATE" if user.is_active else "SUSPEND"
+        
+        AuditLog.objects.create(
+            actor=request.user,
+            action=action_type,
+            target_model='User',
+            target_object_id=str(user.id),
+            details=f"{action_type}: {user.email}. Status changed by Admin."
+        )
+
+        return Response({
+            "status": "success",
+            "is_active": user.is_active,
+            "message": f"User account has been {action_type.lower()}d."
+        })
 
     def get_serializer_class(self):
         if self.action == 'create':
@@ -62,16 +120,23 @@ class UserViewSet(viewsets.ModelViewSet):
             details=f"Updated profile for: {user.email}"
         )
 
-    def perform_destroy(self, instance):
+    def destroy(self, request, *args, **kwargs):
+        """
+        Soft Delete (Deactivate)
+        """
+        instance = self.get_object()
+        instance.is_active = False
+        instance.save()
+
         # --- AUDIT LOG: DELETE ---
         AuditLog.objects.create(
             actor=self.request.user,
             action='DELETE',
             target_model='User',
             target_object_id=str(instance.id),
-            details=f"Deleted user account: {instance.email}"
+            details=f"Deleted/Deactivated user account: {instance.email}"
         )
-        instance.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 # --- 3. Authentication Views ---
 class RegisterView(generics.CreateAPIView):

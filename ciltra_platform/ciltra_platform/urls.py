@@ -18,7 +18,7 @@ from assessments.views import (
     AdminAnalyticsView # Added
 )
 from certificates.views import CertificateInventoryView, StudentCertificateListView, DownloadCertificateView
-from users.views import RegisterView, CustomLoginView, StudentListView, UserViewSet, ExaminerManagementView, ProfileView # Added missing views
+from users.views import RegisterView, CustomLoginView, StudentListView, UserViewSet, ExaminerManagementView
 
 # Router
 router = DefaultRouter()
