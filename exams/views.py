@@ -31,6 +31,7 @@ import shutil
 
 # --- FIX 1: Import JSONParser ---
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
 class ExamViewSet(viewsets.ModelViewSet):
     queryset = Exam.objects.all().order_by('-created_at')
@@ -147,10 +148,11 @@ class ExamViewSet(viewsets.ModelViewSet):
 class QuestionViewSet(viewsets.ModelViewSet):
     queryset = Question.objects.all().order_by('-id')
     serializer_class = QuestionSerializer
+    authentication_classes = [JWTAuthentication]  # Explicit JWT for Next.js frontend
     permission_classes = [permissions.IsAdminUser]
     filter_backends = [filters.SearchFilter]
     search_fields = ['text', 'category']
-    parser_classes = (MultiPartParser, FormParser, JSONParser) 
+    parser_classes = (MultiPartParser, FormParser, JSONParser)
 
     def get_queryset(self):
         queryset = super().get_queryset()

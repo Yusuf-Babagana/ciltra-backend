@@ -2,6 +2,7 @@ from rest_framework import viewsets, permissions, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponse
 import csv
@@ -85,10 +86,11 @@ class ExamViewSet(viewsets.ModelViewSet):
 class QuestionViewSet(viewsets.ModelViewSet):
     queryset = Question.objects.all().order_by('-id')
     serializer_class = QuestionSerializer
-    permission_classes = [IsTeacher] # Only teachers/admins
+    authentication_classes = [JWTAuthentication]  # Explicit JWT for Next.js frontend
+    permission_classes = [IsTeacher]
     filter_backends = [filters.SearchFilter]
     search_fields = ['text', 'category']
-    parser_classes = (MultiPartParser, FormParser) 
+    parser_classes = (MultiPartParser, FormParser)
 
     @action(detail=True, methods=['post'])
     def add_options(self, request, pk=None):
