@@ -39,11 +39,18 @@ class UserViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """
-        CPT-Integrated: Supports fetching trashed (deactivated) users via ?trashed=true.
+        CPT-Integrated:
+        - Detail views (toggle-status, restore, retrieve) can see all users.
+        - ?trashed=true returns only inactive users.
+        - Default list view returns only active users.
         """
         show_trashed = self.request.query_params.get('trashed', 'false') == 'true'
-        if show_trashed:
-            return User.objects.filter(is_active=False).order_by('-date_joined')
+
+        # For detail actions (e.g. toggle-status on a suspended user), expose all
+        if self.detail or show_trashed:
+            return User.objects.all().order_by('-date_joined')
+
+        # Default list: only active users
         return User.objects.filter(is_active=True).order_by('-date_joined')
 
     def destroy(self, request, *args, **kwargs):
