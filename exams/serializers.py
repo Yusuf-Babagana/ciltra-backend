@@ -79,7 +79,7 @@ class ExamSerializer(serializers.ModelSerializer):
             'id', 'title', 'description', 'category', 'is_blueprint', 'blueprint',
             'language_pair_id', 'language_pair_display',
             'duration_minutes', 'passing_score', 'grading_type',
-            'price', 'is_active', 'total_questions',
+            'is_active', 'total_questions',
             'weight_section_a', 'weight_section_b', 'weight_section_c'
         ]
 
@@ -120,18 +120,15 @@ class ExamListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Exam
-        fields = ['id', 'title', 'category', 'price', 'duration_minutes', 'grading_type', 'has_paid']
+        fields = ['id', 'title', 'category', 'duration_minutes', 'grading_type', 'has_paid']
 
     def get_category(self, obj):
-        # If category is None, return "General"
         return obj.category.name if obj.category else "General"
 
     def get_has_paid(self, obj):
         request = self.context.get('request')
         if not request or not request.user.is_authenticated:
             return False
-        if obj.price == 0:
-            return True
         return Payment.objects.filter(user=request.user, exam=obj, status='success').exists()
 
 class ExamDetailSerializer(ExamSerializer):
