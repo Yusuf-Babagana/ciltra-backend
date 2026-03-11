@@ -8,13 +8,15 @@ import csv
 import io
 
 from .models import Exam, Question, Option, ExamCategory
+from cores.models import LanguagePair
 from .serializers import (
     ExamSerializer, 
     ExamDetailSerializer, 
     ExamListSerializer,
     QuestionSerializer, 
     ExamCategorySerializer, 
-    OptionSerializer
+    OptionSerializer,
+    LanguagePairSerializer
 )
 # Ensure you have the permissions file created in the previous step
 from users.permissions import IsTeacher, IsStudent, IsAdmin 
@@ -197,3 +199,12 @@ class CategoryViewSet(viewsets.ModelViewSet):
     queryset = ExamCategory.objects.all()
     serializer_class = ExamCategorySerializer
     permission_classes = [IsTeacher]
+
+class LanguagePairViewSet(viewsets.ModelViewSet):
+    """
+    CPT-Integrated: CRUD for structured translation pairs (e.g., EN-FR).
+    Only accessible by Admins.
+    """
+    queryset = LanguagePair.objects.all()
+    serializer_class = LanguagePairSerializer
+    permission_classes = [permissions.IsAdminUser]

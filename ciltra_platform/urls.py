@@ -37,6 +37,7 @@ router.register(r'exams', ExamViewSet, basename='exams')
 router.register(r'questions', QuestionViewSet, basename='questions')
 router.register(r'categories', CategoryViewSet, basename='categories')
 router.register(r'users', UserViewSet, basename='users')
+router.register(r'language-pairs', LanguagePairViewSet, basename='language-pairs')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
