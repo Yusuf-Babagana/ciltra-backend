@@ -33,9 +33,57 @@ class UserViewSet(viewsets.ModelViewSet):
     PATCH /api/users/{id}/ - Update role or competencies
     DELETE /api/users/{id}/ - Remove user
     """
-    queryset = User.objects.all().order_by('-date_joined')
+    # queryset = User.objects.all().order_by('-date_joined') # Removed static queryset in favor of get_queryset
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAdminUser]
+
+    def get_queryset(self):
+        """
+        CPT-Integrated: Supports fetching trashed (deactivated) users via ?trashed=true.
+        """
+        show_trashed = self.request.query_params.get('trashed', 'false') == 'true'
+        if show_trashed:
+            return User.objects.filter(is_active=False).order_by('-date_joined')
+        return User.objects.filter(is_active=True).order_by('-date_joined')
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        CPT-Integrated: Implements Soft Delete to maintain 15/65/20 data integrity.
+        """
+        user = self.get_object()
+        user_email = user.email
+        
+        # Soft Delete (Deactivate)
+        user.is_active = False
+        user.save()
+
+        # Log the deletion in AuditLog
+        AuditLog.objects.create(
+            actor=request.user,
+            action='DELETE',
+            target_model='User',
+            target_object_id=str(user.id),
+            details=f"Deleted/Deactivated user: {user_email}"
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=['post'], url_path='restore')
+    def restore(self, request, pk=None):
+        """
+        CPT-Integrated: Restores a deactivated user account.
+        """
+        user = self.get_object()
+        user.is_active = True
+        user.save()
+
+        AuditLog.objects.create(
+            actor=request.user,
+            action='RESTORE',
+            target_model='User',
+            target_object_id=str(user.id),
+            details=f"Restored user account: {user.email}"
+        )
+        return Response({"message": "User restored successfully"}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='toggle-status')
     def toggle_status(self, request, pk=None):

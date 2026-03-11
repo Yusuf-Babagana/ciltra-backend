@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.shortcuts import get_object_or_404
+from django.http import HttpResponse
 import csv
 import io
 
@@ -166,6 +167,31 @@ class QuestionViewSet(viewsets.ModelViewSet):
 
         except Exception as e:
             return Response({"error": f"Failed to process CSV: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='bulk-upload/template')
+    def bulk_upload_template(self, request):
+        """
+        CPT-Integrated: Serves a CSV template for bulk question upload.
+        """
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="cpt_question_template.csv"'
+        
+        writer = csv.writer(response)
+        writer.writerow([
+            'section', 'question_text', 'question_type', 'points', 
+            'difficulty', 'category', 'source_text', 'reference_translation', 
+            'translation_brief', 'specialization', 'options', 'correct_answer'
+        ])
+        
+        # Add a placeholder example row for user guidance
+        writer.writerow([
+            'Section A', 'Sample MCQ Question?', 'mcq', '1.0', 
+            'medium', 'General', '', '', 
+            '', '', 'Option 1;Option 2;Option 3', 'Option 1'
+        ])
+        
+        return response
+
 
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = ExamCategory.objects.all()
