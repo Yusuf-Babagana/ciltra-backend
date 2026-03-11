@@ -4,8 +4,7 @@ from rest_framework.routers import DefaultRouter
 
 # Import Views
 # UPDATED: Imported StudentListView instead of CandidateListView
-from users.views import RegisterView, CustomLoginView, StudentListView 
-from exams.views import ExamViewSet, QuestionViewSet, CategoryViewSet
+from exams.views import ExamViewSet, QuestionViewSet, CategoryViewSet, LanguagePairViewSet, list_backups, perform_restore, download_backup, delete_backup, create_backup_view
 from assessments.views import (
     PendingGradingListView, 
     SubmitGradeView, 
@@ -14,15 +13,20 @@ from assessments.views import (
     StudentExamAttemptsView, 
     ExamSessionDetailView,
     AdminStatsView,
-    HeartbeatSaveView
+    HeartbeatSaveView,
+    GradedHistoryListView, # Added
+    AdminAnalyticsView # Added
 )
-from certificates.views import CertificateInventoryView, StudentCertificateListView
+from certificates.views import CertificateInventoryView, StudentCertificateListView, DownloadCertificateView
+from users.views import RegisterView, CustomLoginView, StudentListView, UserViewSet, ExaminerManagementView, ProfileView # Added missing views
 
 # Router
 router = DefaultRouter()
 router.register(r'exams', ExamViewSet, basename='exams')
 router.register(r'questions', QuestionViewSet, basename='questions')
 router.register(r'categories', CategoryViewSet, basename='categories')
+router.register(r'users', UserViewSet, basename='users')
+router.register(r'language-pairs', LanguagePairViewSet, basename='language-pairs')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -54,6 +58,20 @@ urlpatterns = [
     # --- Admin Certificates ---
     path('api/admin/certificates/', CertificateInventoryView.as_view(), name='admin-certificates'),
 
-    # --- Standard API Routes ---
+    # --- Examiner Management ---
+    path('api/admin/examiners/', ExaminerManagementView.as_view(), name='admin-examiners'),
+    
+    # --- Analytics & History ---
+    path('api/admin/analytics/', AdminAnalyticsView.as_view(), name='admin-analytics'),
+    path('api/admin/grading/history/', GradedHistoryListView.as_view(), name='grading-history'),
+
+    # --- Backup Management ---
+    path('api/admin/backups/list/', list_backups, name='admin-backups-list'),
+    path('api/admin/backups/restore/', perform_restore, name='admin-backups-restore'),
+    path('api/admin/backups/download/<str:filename>/', download_backup, name='admin-backups-download'),
+    path('api/admin/backups/delete/<str:filename>/', delete_backup, name='admin-backups-delete'),
+    path('api/admin/backups/create/', create_backup_view, name='admin-backups-create'),
+
+    # --- Router Routes ---
     path('api/', include(router.urls)),
 ]
