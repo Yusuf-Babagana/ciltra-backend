@@ -11,7 +11,7 @@ from users.views import (
     UserViewSet,
     ExaminerManagementView
 )
-from exams.views import ExamViewSet, QuestionViewSet, CategoryViewSet, list_backups, perform_restore,download_backup, delete_backup, create_backup_view
+from exams.views import ExamViewSet, QuestionViewSet, CategoryViewSet, LanguagePairViewSet, list_backups, perform_restore,download_backup, delete_backup, create_backup_view
 from assessments.views import (
     PendingGradingListView, 
     SubmitGradeView, 

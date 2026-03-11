@@ -18,6 +18,11 @@ class ExamCategorySerializer(serializers.ModelSerializer):
         model = ExamCategory
         fields = '__all__'
 
+class LanguagePairSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LanguagePair
+        fields = ['id', 'source_language', 'target_language', 'pair_code']
+
 # --- 2. Question Serializers ---
 
 class QuestionSerializer(serializers.ModelSerializer):

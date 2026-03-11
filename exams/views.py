@@ -6,11 +6,11 @@ from django.utils import timezone
 
 from .models import Exam, Question, Option, ExamCategory, ExaminerAssignment
 from assessments.models import ExamSession, StudentAnswer
-from cores.models import AuditLog
+from cores.models import AuditLog, LanguagePair
 from .serializers import (
     ExamSerializer, ExamDetailSerializer, ExamListSerializer,
     QuestionSerializer, ExamCategorySerializer, OptionSerializer,
-    ExamSessionStartSerializer, ExamSubmitSerializer
+    ExamSessionStartSerializer, ExamSubmitSerializer, LanguagePairSerializer
 )
 
 import csv
@@ -266,6 +266,30 @@ class QuestionViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=False, methods=['get'], url_path='bulk-upload/template')
+    def bulk_upload_template(self, request):
+        """
+        CPT-Integrated: Serves a CSV template with all architecture fields.
+        """
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="cpt_question_template.csv"'
+        
+        writer = csv.writer(response)
+        writer.writerow([
+            'section', 'question_text', 'question_type', 'points', 
+            'difficulty', 'category', 'specialization', 'language_pair', 
+            'source_text_reference', 'reference_translation', 'options', 'correct_answer'
+        ])
+        
+        # Add a sample row
+        writer.writerow([
+            'Section A', 'Sample MCQ Question?', 'mcq', '1.0', 
+            'medium', 'General', '', '', 
+            '', '', 'Option 1;Option 2;Option 3', 'Option 1'
+        ])
+        
+        return response
+
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
         """
@@ -310,6 +334,15 @@ class QuestionViewSet(viewsets.ModelViewSet):
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = ExamCategory.objects.all()
     serializer_class = ExamCategorySerializer
+    permission_classes = [permissions.IsAdminUser]
+
+class LanguagePairViewSet(viewsets.ModelViewSet):
+    """
+    CPT-Integrated: CRUD for structured translation pairs (e.g., EN-FR).
+    Only accessible by Admins.
+    """
+    queryset = LanguagePair.objects.all()
+    serializer_class = LanguagePairSerializer
     permission_classes = [permissions.IsAdminUser]
 
 
