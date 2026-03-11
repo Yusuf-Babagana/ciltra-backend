@@ -35,7 +35,7 @@ class QuestionSerializer(serializers.ModelSerializer):
         model = Question
         fields = [
             'id', 'exam', 'exam_title', 'question_text', 'question_type', 'status',
-            'points', 'section', 'negative_points',
+            'points', 'section',
             'options', 'options_data'
         ]
 
